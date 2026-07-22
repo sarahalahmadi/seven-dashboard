@@ -32,6 +32,20 @@ const HEADER_MAP = {
   notStarted: ["not started yet"],
 };
 
+const OWNER_DISPLAY = {
+  "fm": "FM", "hr": "HR", "qhse": "QHSE", "f&b": "F&B", "it": "IT",
+};
+function normalizeOwner(v) {
+  const s = String(v || "").trim();
+  if (!s) return "Unassigned";
+  const key = s.toLowerCase();
+  if (OWNER_DISPLAY[key]) return OWNER_DISPLAY[key];
+  // Otherwise: capitalize first letter of each word, leave the rest as typed
+  // (safe for normal words, avoids mangling acronyms not in the map above)
+  if (s === s.toUpperCase()) return s; // already an acronym like "QHSE2"
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function normalizeHeader(h) {
   return String(h || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -95,7 +109,7 @@ function parseWorkbook(workbook) {
       endDate: idx.endDate !== -1 ? toDate(row[idx.endDate]) : null,
       status: idx.status !== -1 ? String(row[idx.status] || "").trim() : "",
       keyMilestone: idx.keyMilestone !== -1 ? String(row[idx.keyMilestone] || "").trim().toLowerCase() === "y" : false,
-      owner: idx.owner !== -1 ? row[idx.owner] : "",
+      owner: idx.owner !== -1 ? normalizeOwner(row[idx.owner]) : "Unassigned",
       items: idx.items !== -1 ? Number(row[idx.items]) || 0 : 1,
       complete: idx.complete !== -1 ? Number(row[idx.complete]) || 0 : (String(row[idx.status]).toLowerCase() === "completed" ? 1 : 0),
       inProgress: idx.inProgress !== -1 ? Number(row[idx.inProgress]) || 0 : (String(row[idx.status]).toLowerCase() === "in-progress" ? 1 : 0),
@@ -130,6 +144,8 @@ function findOpeningDate(workbook) {
 function aggregate(rows) {
   const totals = { items: 0, complete: 0, inProgress: 0, notStarted: 0, startDelayed: 0, completionOverdue: 0, milestones: 0 };
   const byDept = {};
+  const byOwner = {};        // owner -> totals across all departments
+  const byDeptOwner = {};    // "dept||owner" -> totals, for the readiness-per-owner matrix
 
   for (const r of rows) {
     totals.items += r.items;
@@ -155,6 +171,17 @@ function aggregate(rows) {
     if (r.startDate && (!d.minStart || r.startDate < d.minStart)) d.minStart = r.startDate;
     if (r.endDate && (!d.maxEnd || r.endDate > d.maxEnd)) d.maxEnd = r.endDate;
     if (r.keyMilestone) d.milestones.push({ label: r.label, date: r.endDate || r.startDate, dept: r.department });
+
+    const owner = r.owner || "Unassigned";
+    if (!byOwner[owner]) byOwner[owner] = { name: owner, items: 0, complete: 0, inProgress: 0, startDelayed: 0, completionOverdue: 0 };
+    const o = byOwner[owner];
+    o.items += r.items; o.complete += r.complete; o.inProgress += r.inProgress;
+    o.startDelayed += r.startDelayed; o.completionOverdue += r.completionOverdue;
+
+    const doKey = r.department + "||" + owner;
+    if (!byDeptOwner[doKey]) byDeptOwner[doKey] = { department: r.department, owner, items: 0, complete: 0 };
+    byDeptOwner[doKey].items += r.items;
+    byDeptOwner[doKey].complete += r.complete;
   }
 
   totals.notStarted = totals.items - totals.complete - totals.inProgress;
@@ -164,7 +191,18 @@ function aggregate(rows) {
   const depts = DEPT_ORDER.filter((d) => byDept[d]).concat(Object.keys(byDept).filter((d) => !DEPT_ORDER.includes(d)));
   const deptList = depts.map((name, i) => ({ ...byDept[name], color: DEPT_COLORS[i % DEPT_COLORS.length] }));
 
-  return { totals, deptList };
+  const ownerList = Object.values(byOwner).sort((a, b) => b.items - a.items);
+  const ownerNames = ownerList.map((o) => o.name);
+  const readinessMatrix = depts.map((deptName) => {
+    const cells = ownerNames.map((owner) => {
+      const cell = byDeptOwner[deptName + "||" + owner];
+      return cell ? { owner, items: cell.items, complete: cell.complete, pct: pct(cell.complete, cell.items) } : { owner, items: 0, complete: 0, pct: null };
+    });
+    const deptTotal = byDept[deptName];
+    return { department: deptName, cells, overallPct: pct(deptTotal.complete, deptTotal.items) };
+  });
+
+  return { totals, deptList, ownerList, readinessMatrix };
 }
 
 // ---------------------------------------------------------------
@@ -332,8 +370,35 @@ function renderProgress(deptList) {
   }).join("");
 }
 
+function pctColor(p) {
+  if (p === null) return "var(--ink-faint)";
+  if (p >= 75) return "var(--green)";
+  if (p >= 35) return "var(--teal)";
+  if (p > 0) return "var(--orange)";
+  return "var(--ink-faint)";
+}
+
+function renderReadinessMatrix(ownerList, readinessMatrix) {
+  const panel = document.getElementById("readiness-matrix");
+  if (!panel) return;
+  if (!ownerList.length) { panel.innerHTML = `<div style="font-size:12px;color:var(--ink-dim);">No owner data found.</div>`; return; }
+
+  const ownerNames = ownerList.map((o) => o.name);
+  const head = `<tr><th class="rm-corner">Department</th>${ownerNames.map((o) => `<th>${o}</th>`).join("")}<th class="rm-overall">Overall</th></tr>`;
+
+  const bodyRows = readinessMatrix.map((row) => {
+    const cells = row.cells.map((c) => {
+      if (!c.items) return `<td class="rm-cell rm-empty">—</td>`;
+      return `<td class="rm-cell"><span class="rm-pill mono" style="background:${pctColor(c.pct)}22; color:${pctColor(c.pct)};">${c.pct}%</span></td>`;
+    }).join("");
+    return `<tr><td class="rm-dept">${row.department}</td>${cells}<td class="rm-cell rm-overall"><span class="rm-pill mono" style="background:${pctColor(row.overallPct)}22; color:${pctColor(row.overallPct)};">${row.overallPct}%</span></td></tr>`;
+  }).join("");
+
+  panel.innerHTML = `<div class="rm-scroll"><table class="rm-table"><thead>${head}</thead><tbody>${bodyRows}</tbody></table></div>`;
+}
+
 function renderAll() {
-  const { totals, deptList } = aggregate(state.rows);
+  const { totals, deptList, ownerList, readinessMatrix } = aggregate(state.rows);
   document.getElementById("empty-state").style.display = "none";
   document.getElementById("dashboard").style.display = "block";
   document.getElementById("reset-btn").style.display = "inline-block";
@@ -345,6 +410,7 @@ function renderAll() {
   renderTimeline(deptList);
   renderDonuts(totals);
   renderProgress(deptList);
+  renderReadinessMatrix(ownerList, readinessMatrix);
 }
 
 // ---------------------------------------------------------------
