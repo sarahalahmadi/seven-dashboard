@@ -100,7 +100,7 @@ function parseWorkbook(workbook) {
     const row = raw[r];
     if (!row || row.every((c) => c === "" || c === null || c === undefined)) continue;
     const dept = idx.department !== -1 ? String(row[idx.department] || "").trim() : "";
-    if (!dept) continue;
+    if (!dept || dept.length < 3) continue; // skip blank/typo department values (e.g. a stray "p")
 
     rows.push({
       department: dept,
