@@ -1,4 +1,4 @@
-[README.md](https://github.com/user-attachments/files/31180423/README.md)
+[README.md](https://github.com/user-attachments/files/31180585/README.md)
 # SEVEN — Critical Path Dashboard
 
 A standalone dashboard for tracking the Madina SEVEN critical path. You own every file here — there's no account, no third-party builder, and no backend. It's just three files that run entirely in the browser.
