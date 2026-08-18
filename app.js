@@ -179,9 +179,10 @@ function aggregate(rows) {
     o.startDelayed += r.startDelayed; o.completionOverdue += r.completionOverdue;
 
     const doKey = r.department + "||" + owner;
-    if (!byDeptOwner[doKey]) byDeptOwner[doKey] = { department: r.department, owner, items: 0, complete: 0 };
+    if (!byDeptOwner[doKey]) byDeptOwner[doKey] = { department: r.department, owner, items: 0, complete: 0, inProgress: 0 };
     byDeptOwner[doKey].items += r.items;
     byDeptOwner[doKey].complete += r.complete;
+    byDeptOwner[doKey].inProgress += r.inProgress;
   }
 
   totals.notStarted = totals.items - totals.complete - totals.inProgress;
@@ -193,13 +194,30 @@ function aggregate(rows) {
 
   const ownerList = Object.values(byOwner).sort((a, b) => b.items - a.items);
   const ownerNames = ownerList.map((o) => o.name);
+  // Readiness counts work that has been STARTED — complete + in-progress — against total items.
   const readinessMatrix = depts.map((deptName) => {
     const cells = ownerNames.map((owner) => {
       const cell = byDeptOwner[deptName + "||" + owner];
-      return cell ? { owner, items: cell.items, complete: cell.complete, pct: pct(cell.complete, cell.items) } : { owner, items: 0, complete: 0, pct: null };
+      if (!cell) return { owner, items: 0, complete: 0, inProgress: 0, pct: null, completePct: null };
+      return {
+        owner,
+        items: cell.items,
+        complete: cell.complete,
+        inProgress: cell.inProgress,
+        pct: pct(cell.complete + cell.inProgress, cell.items),
+        completePct: pct(cell.complete, cell.items),
+      };
     });
-    const deptTotal = byDept[deptName];
-    return { department: deptName, cells, overallPct: pct(deptTotal.complete, deptTotal.items) };
+    const d = byDept[deptName];
+    return {
+      department: deptName,
+      cells,
+      items: d.items,
+      complete: d.complete,
+      inProgress: d.inProgress,
+      overallPct: pct(d.complete + d.inProgress, d.items),
+      overallCompletePct: pct(d.complete, d.items),
+    };
   });
 
   return { totals, deptList, ownerList, readinessMatrix };
@@ -416,12 +434,19 @@ function renderReadinessMatrix(ownerList, readinessMatrix) {
   const ownerNames = ownerList.map((o) => o.name);
   const head = `<tr><th class="rm-corner">Department</th>${ownerNames.map((o) => `<th>${o}</th>`).join("")}<th class="rm-overall">Overall</th></tr>`;
 
+  const cellHtml = (c, extraClass) => {
+    if (!c.items) return `<td class="rm-cell rm-empty">—</td>`;
+    const tip = `${fmt(c.complete)} complete + ${fmt(c.inProgress)} in progress of ${fmt(c.items)} items`;
+    return `<td class="rm-cell ${extraClass || ""}" title="${tip}">
+      <span class="rm-pill mono" style="background:${pctColor(c.pct)}22; color:${pctColor(c.pct)};">${c.pct}%</span>
+      <span class="rm-sub mono">${c.completePct}% done</span>
+    </td>`;
+  };
+
   const bodyRows = readinessMatrix.map((row) => {
-    const cells = row.cells.map((c) => {
-      if (!c.items) return `<td class="rm-cell rm-empty">—</td>`;
-      return `<td class="rm-cell"><span class="rm-pill mono" style="background:${pctColor(c.pct)}22; color:${pctColor(c.pct)};">${c.pct}%</span></td>`;
-    }).join("");
-    return `<tr><td class="rm-dept">${row.department}</td>${cells}<td class="rm-cell rm-overall"><span class="rm-pill mono" style="background:${pctColor(row.overallPct)}22; color:${pctColor(row.overallPct)};">${row.overallPct}%</span></td></tr>`;
+    const cells = row.cells.map((c) => cellHtml(c)).join("");
+    const overall = { items: row.items, complete: row.complete, inProgress: row.inProgress, pct: row.overallPct, completePct: row.overallCompletePct };
+    return `<tr><td class="rm-dept">${row.department}</td>${cells}${cellHtml(overall, "rm-overall")}</tr>`;
   }).join("");
 
   panel.innerHTML = `<div class="rm-scroll"><table class="rm-table"><thead>${head}</thead><tbody>${bodyRows}</tbody></table></div>`;
