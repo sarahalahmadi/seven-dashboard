@@ -221,7 +221,7 @@ function renderCountdown(openingDate) {
   label.textContent = openingDate.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
-function renderTrack(deptList, totals) {
+function renderTrack(deptList, totals, openingDate) {
   const nodesEl = document.getElementById("track-nodes");
   const fillEl = document.getElementById("track-fill");
   const overallEl = document.getElementById("overall-pct");
@@ -229,22 +229,45 @@ function renderTrack(deptList, totals) {
   overallEl.textContent = overall + "%";
   fillEl.style.width = overall + "%";
 
+  const marker = document.getElementById("runway-marker");
+  document.getElementById("runway-marker-pct").textContent = overall + "%";
+  // Keep the badge inside the bar at either extreme
+  marker.style.left = Math.min(Math.max(overall, 4), 96) + "%";
+
+  document.getElementById("runway-start").textContent =
+    new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  document.getElementById("runway-end").textContent = openingDate
+    ? openingDate.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+    : "Opening";
+
+  const R = 19, C = 2 * Math.PI * R;
   nodesEl.innerHTML = deptList.map((d) => {
     const p = pct(d.complete, d.items);
     const risk = d.startDelayed > 0 || d.completionOverdue > 0;
     const cls = p >= 100 ? "complete" : risk ? "risk" : "";
-    return `<div class="track-node ${cls}">
-      <div class="dot">${p}%</div>
-      <div class="name">${d.name}</div>
-      <div class="pct mono">${fmt(d.complete)}/${fmt(d.items)}</div>
+    const ringColor = p >= 100 ? "#17B978" : risk ? "#E01A4F" : d.color;
+    const len = (p / 100) * C;
+    return `<div class="track-node ${cls}" style="--node-color:${d.color};">
+      <div class="ring">
+        <svg viewBox="0 0 44 44" width="44" height="44">
+          <circle cx="22" cy="22" r="${R}" fill="none" stroke="var(--border)" stroke-width="4"/>
+          <circle cx="22" cy="22" r="${R}" fill="none" stroke="${ringColor}" stroke-width="4"
+            stroke-linecap="round" stroke-dasharray="${len} ${C - len}"/>
+        </svg>
+        <div class="ring-label">${p}%</div>
+      </div>
+      <div class="meta">
+        <div class="name">${d.name}</div>
+        <div class="pct mono">${fmt(d.complete)}/${fmt(d.items)} items</div>
+        ${risk ? `<div class="risk-tag">At risk</div>` : ``}
+      </div>
     </div>`;
-  }).join("") + `<div class="track-node" style="width:60px;"><div class="track-flag">🏁</div><div class="name">Opening</div></div>`;
+  }).join("");
 }
 
 function renderKPIs(totals) {
   const cards = [
-    { label: "Total Tasks", value: totals.tasks, accent: "var(--teal)", icon: "📋" },
-    { label: "Total Items", value: totals.items, accent: "var(--orange)", icon: "🗂" },
+    { label: "Total Items", value: totals.items, accent: "var(--teal)", icon: "🗂" },
     { label: "Completed", value: totals.complete, accent: "var(--green)", icon: "✅" },
     { label: "In Progress", value: totals.inProgress, accent: "#50c5d1", icon: "⏱" },
     { label: "Not Started", value: totals.notStarted, accent: "var(--ink-faint)", icon: "⏳" },
@@ -260,20 +283,23 @@ function renderKPIs(totals) {
 }
 
 function renderBarChart(deptList) {
-  const max = Math.max(...deptList.map((d) => d.items), 1);
+  const H = 180; // every column is a full 100% scale, so heights are comparable
   document.getElementById("bar-chart").innerHTML = deptList.map((d) => {
-    const h = Math.max((d.items / max) * 180, 4);
-    const completeH = d.items ? (d.complete / d.items) * h : 0;
-    const progressH = d.items ? (d.inProgress / d.items) * h : 0;
-    const remain = h - completeH - progressH;
+    const completePct = pct(d.complete, d.items);
+    const progressPct = pct(d.inProgress, d.items);
+    const remainPct = Math.max(100 - completePct - progressPct, 0);
+    const completeH = (completePct / 100) * H;
+    const progressH = (progressPct / 100) * H;
+    const remain = H - completeH - progressH;
     return `<div class="bar-col">
-      <div class="bar-total mono">${fmt(d.items)}</div>
-      <div class="bar-stack" style="height:${h}px;">
+      <div class="bar-total mono" title="${fmt(d.complete)} of ${fmt(d.items)} items complete">${completePct}%</div>
+      <div class="bar-stack" style="height:${H}px;" title="Complete ${completePct}% · In Progress ${progressPct}% · Pending ${remainPct}%">
         <div class="bar-seg" style="height:${remain}px; background:var(--bg-raised);"></div>
         <div class="bar-seg" style="height:${progressH}px; background:var(--orange);"></div>
         <div class="bar-seg" style="height:${completeH}px; background:var(--green);"></div>
       </div>
       <div class="bar-label">${d.name}</div>
+      <div class="bar-sub mono">${fmt(d.items)} items</div>
     </div>`;
   }).join("");
 }
@@ -288,28 +314,42 @@ function renderMilestones(deptList, totals) {
     </div>`).join("") : `<div style="font-size:12px; color:var(--ink-dim); padding:12px 0;">No key milestones flagged yet.</div>`;
 }
 
-function renderTimeline(deptList) {
+function renderTimeline(deptList, openingDate) {
   const dated = deptList.filter((d) => d.minStart && d.maxEnd);
   if (!dated.length) { document.getElementById("timeline").innerHTML = `<div style="font-size:12px;color:var(--ink-dim);">No dated tasks found.</div>`; return; }
   const min = new Date(Math.min(...dated.map((d) => d.minStart)));
-  const max = new Date(Math.max(...dated.map((d) => d.maxEnd)));
+  const latestEnd = new Date(Math.max(...dated.map((d) => d.maxEnd)));
+  // Run the scale through to the opening date (when it's later than the last task)
+  // so the timeline reads as the full runway to opening, not just where data currently ends.
+  const max = openingDate && openingDate > latestEnd ? openingDate : latestEnd;
   const span = Math.max(max - min, 86400000);
+
+  // Vertical marker showing where opening day falls on the scale
+  const openPos = openingDate ? ((openingDate - min) / span) * 100 : null;
+  const openMark = (openPos !== null && openPos >= 0 && openPos <= 100)
+    ? `<div class="tl-open" style="left:${openPos}%;" title="Opening day"></div>` : "";
 
   const rowsHtml = deptList.map((d) => {
     if (!d.minStart || !d.maxEnd) {
-      return `<div class="tl-row"><div class="tl-name">${d.name}</div><div class="tl-track"></div></div>`;
+      return `<div class="tl-row"><div class="tl-name">${d.name}</div><div class="tl-track">${openMark}</div></div>`;
     }
     const left = ((d.minStart - min) / span) * 100;
     const width = Math.max(((d.maxEnd - d.minStart) / span) * 100, 1.5);
+    const range = `${d.minStart.toLocaleDateString(undefined, { month: "short", day: "numeric" })} → ${d.maxEnd.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
     return `<div class="tl-row">
       <div class="tl-name">${d.name}</div>
-      <div class="tl-track"><div class="tl-bar" style="left:${left}%; width:${width}%; background:${d.color};"></div></div>
+      <div class="tl-track" title="${d.name}: ${range}">
+        <div class="tl-bar" style="left:${left}%; width:${width}%; background:${d.color};"></div>${openMark}
+      </div>
     </div>`;
   }).join("");
 
-  const scaleLabels = [0, 0.25, 0.5, 0.75, 1].map((f) => {
+  const multiYear = max.getFullYear() !== min.getFullYear();
+  const scaleLabels = [0, 1/6, 2/6, 3/6, 4/6, 5/6, 1].map((f) => {
     const d = new Date(min.getTime() + span * f);
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    return d.toLocaleDateString(undefined, multiYear
+      ? { month: "short", day: "numeric", year: "2-digit" }
+      : { month: "short", day: "numeric" });
   });
 
   document.getElementById("timeline").innerHTML = rowsHtml + `
@@ -360,16 +400,6 @@ function renderDonuts(totals) {
   document.getElementById("donut-completion-legend").innerHTML = compSegs.map((s) => `<div class="legend-item"><span class="legend-swatch" style="background:${s.color}"></span>${s.label}</div>`).join("");
 }
 
-function renderProgress(deptList) {
-  document.getElementById("progress-list").innerHTML = deptList.map((d) => {
-    const p = pct(d.complete, d.items);
-    return `<div class="progress-row">
-      <div class="p-top"><span class="p-name">${d.name}</span><span class="p-frac">${fmt(d.complete)}/${fmt(d.items)} (${p}%)</span></div>
-      <div class="p-track"><div class="p-fill" style="width:${p}%; background:${d.color};"></div></div>
-    </div>`;
-  }).join("");
-}
-
 function pctColor(p) {
   if (p === null) return "var(--ink-faint)";
   if (p >= 75) return "var(--green)";
@@ -403,13 +433,12 @@ function renderAll() {
   document.getElementById("dashboard").style.display = "block";
   document.getElementById("reset-btn").style.display = "inline-block";
   renderCountdown(state.openingDate);
-  renderTrack(deptList, totals);
+  renderTrack(deptList, totals, state.openingDate);
   renderKPIs(totals);
   renderBarChart(deptList);
   renderMilestones(deptList, totals);
-  renderTimeline(deptList);
+  renderTimeline(deptList, state.openingDate);
   renderDonuts(totals);
-  renderProgress(deptList);
   renderReadinessMatrix(ownerList, readinessMatrix);
 }
 
