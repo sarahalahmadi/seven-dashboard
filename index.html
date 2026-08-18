@@ -124,40 +124,68 @@
   /* ---------- Critical path track (signature element) ---------- */
   .track-wrap{
     background:var(--bg-panel); border:1px solid var(--border); border-radius:var(--radius);
-    padding:26px 32px 20px; margin-bottom:22px;
+    padding:26px 32px 26px; margin-bottom:22px;
   }
   .track-head{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:22px; flex-wrap:wrap; gap:8px;}
   .track-head h3{ font-size:13px; text-transform:uppercase; letter-spacing:.1em; color:var(--ink-dim); font-weight:600; }
   .track-head .overall-pct{ font-family:'Space Grotesk'; font-size:15px; color:var(--ink); }
   .track-head .overall-pct b{ color:var(--teal); font-size:20px; }
 
-  .track{ position:relative; padding:0 8px; }
-  .track-line{
-    position:absolute; left:8px; right:8px; top:23px; height:3px;
-    background:var(--border); border-radius:3px; overflow:hidden;
+  /* runway: one honest bar for overall progress toward opening */
+  .runway{ margin:14px 0 26px; }
+  .runway-bar{
+    position:relative; height:12px; background:var(--bg-raised);
+    border-radius:999px; border:1px solid var(--border);
   }
-  .track-line-fill{ height:100%; background:var(--track-track); border-radius:3px; transition:width .6s ease; }
-  .track-nodes{ position:relative; display:flex; justify-content:space-between; }
-  .track-node{ display:flex; flex-direction:column; align-items:center; width:120px; }
-  .track-node .dot{
-    width:46px; height:46px; border-radius:50%; background:var(--bg-raised);
-    border:2.5px solid var(--border); display:flex; align-items:center; justify-content:center;
-    font-family:'Space Grotesk'; font-weight:600; font-size:13px; color:var(--ink-dim);
-    z-index:2; transition:border-color .3s ease, color .3s ease;
+  .runway-fill{
+    position:absolute; left:0; top:0; bottom:0;
+    background:var(--track-track); background-size:600px 100%;
+    border-radius:999px; transition:width .6s ease; min-width:6px;
   }
-  .track-node.complete .dot{ border-color:var(--green); color:var(--green); background:var(--green-soft); }
-  .track-node.risk .dot{ border-color:var(--magenta); color:var(--magenta); background:var(--magenta-soft); }
-  .track-node .name{ margin-top:10px; font-size:12px; font-weight:500; text-align:center; }
-  .track-node .pct{ font-family:'IBM Plex Mono'; font-size:11px; color:var(--ink-dim); margin-top:2px; }
-  .track-flag{
-    width:46px; height:46px; border-radius:50%; background:var(--bg-raised);
-    border:2.5px solid var(--ink-faint); display:flex; align-items:center; justify-content:center;
-    font-size:18px; z-index:2;
+  .runway-marker{
+    position:absolute; top:-30px; transform:translateX(-50%); transition:left .6s ease;
+  }
+  .runway-marker-pct{
+    display:inline-block; background:var(--bg-raised); border:1px solid var(--teal);
+    color:var(--teal); font-size:11.5px; font-weight:600; padding:3px 9px; border-radius:999px;
+    white-space:nowrap;
+  }
+  .runway-ends{
+    display:flex; justify-content:space-between; margin-top:10px;
+    font-size:11.5px; color:var(--ink-faint);
+  }
+  .runway-flag{ display:flex; align-items:center; gap:6px; color:var(--ink-dim); }
+
+  /* department readiness cards — parallel workstreams, not a sequence */
+  .track-nodes{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px;
+  }
+  .track-node{
+    display:flex; align-items:center; gap:12px;
+    background:var(--bg-raised); border:1px solid var(--border);
+    border-radius:10px; padding:12px 14px;
+    border-left:3px solid var(--node-color, var(--teal));
+  }
+  .track-node.complete{ border-left-color:var(--green); }
+  .track-node.risk{ border-left-color:var(--magenta); }
+  .track-node .ring{ position:relative; width:44px; height:44px; flex:none; }
+  .track-node .ring svg{ transform:rotate(-90deg); display:block; }
+  .track-node .ring-label{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-family:'Space Grotesk'; font-weight:600; font-size:12px; color:var(--ink);
+  }
+  .track-node .meta{ min-width:0; }
+  .track-node .name{ font-size:12.5px; font-weight:500; line-height:1.25; }
+  .track-node .pct{ font-family:'IBM Plex Mono'; font-size:10.5px; color:var(--ink-dim); margin-top:3px; }
+  .track-node .risk-tag{
+    display:inline-block; margin-top:4px; font-size:9.5px; font-weight:600; letter-spacing:.05em;
+    text-transform:uppercase; color:var(--magenta); background:var(--magenta-soft);
+    padding:2px 6px; border-radius:4px;
   }
 
   /* ---------- KPI grid ---------- */
   .kpi-grid{
-    display:grid; grid-template-columns:repeat(7, 1fr); gap:14px; margin-bottom:24px;
+    display:grid; grid-template-columns:repeat(6, 1fr); gap:14px; margin-bottom:24px;
   }
   .kpi-card{
     background:var(--bg-panel); border:1px solid var(--border); border-radius:var(--radius);
@@ -185,7 +213,8 @@
   .bar-stack{ width:100%; max-width:46px; border-radius:6px 6px 0 0; overflow:hidden; display:flex; flex-direction:column-reverse; background:var(--bg-raised); }
   .bar-seg{ width:100%; }
   .bar-col .bar-label{ margin-top:10px; font-size:11px; color:var(--ink-dim); text-align:center; }
-  .bar-col .bar-total{ font-family:'IBM Plex Mono'; font-size:11px; color:var(--ink); margin-top:2px; }
+  .bar-col .bar-total{ font-family:'IBM Plex Mono'; font-size:13px; font-weight:600; color:var(--ink); margin-bottom:2px; }
+  .bar-col .bar-sub{ font-family:'IBM Plex Mono'; font-size:10px; color:var(--ink-faint); margin-top:2px; }
   .legend-row{ display:flex; gap:18px; margin-top:16px; flex-wrap:wrap; }
   .legend-item{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink-dim); }
   .legend-swatch{ width:10px; height:10px; border-radius:3px; }
@@ -197,13 +226,14 @@
   .milestone-item .m-dept{ color:var(--ink-dim); font-size:11px; }
 
   /* timeline */
-  .timeline-panel{ margin-top:18px; }
-  .tl-row{ display:grid; grid-template-columns:110px 1fr; align-items:center; gap:12px; margin-bottom:10px; }
-  .tl-name{ font-size:12.5px; color:var(--ink-dim); }
-  .tl-track{ position:relative; height:20px; background:var(--bg-raised); border-radius:6px; overflow:hidden; }
+  .timeline-panel{ margin-bottom:18px; }
+  .tl-row{ display:grid; grid-template-columns:150px 1fr; align-items:center; gap:16px; margin-bottom:12px; }
+  .tl-name{ font-size:13px; color:var(--ink-dim); }
+  .tl-track{ position:relative; height:26px; background:var(--bg-raised); border-radius:6px; overflow:hidden; }
   .tl-bar{ position:absolute; top:0; bottom:0; border-radius:6px; }
-  .tl-scale{ display:grid; grid-template-columns:110px 1fr; margin-top:4px; }
-  .tl-scale-labels{ display:flex; justify-content:space-between; font-size:10px; color:var(--ink-faint); font-family:'IBM Plex Mono'; }
+  .tl-scale{ display:grid; grid-template-columns:150px 1fr; margin-top:8px; gap:16px; }
+  .tl-scale-labels{ display:flex; justify-content:space-between; font-size:10.5px; color:var(--ink-faint); font-family:'IBM Plex Mono'; }
+  .tl-open{ position:absolute; top:0; bottom:0; width:2px; background:var(--teal); opacity:.8; }
 
   /* donuts */
   .donut-panel{ display:flex; flex-direction:column; align-items:center; text-align:center; }
@@ -212,14 +242,6 @@
   .donut-center{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
   .donut-center .n{ font-family:'Space Grotesk'; font-size:24px; font-weight:700; }
   .donut-center .l{ font-size:10.5px; color:var(--ink-dim); text-transform:uppercase; letter-spacing:.06em; }
-
-  /* completion progress */
-  .progress-list{ display:flex; flex-direction:column; gap:16px; }
-  .progress-row .p-top{ display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px; }
-  .progress-row .p-top .p-name{ font-weight:500; }
-  .progress-row .p-top .p-frac{ color:var(--ink-dim); font-family:'IBM Plex Mono'; font-size:11.5px; }
-  .p-track{ height:8px; background:var(--bg-raised); border-radius:4px; overflow:hidden; }
-  .p-fill{ height:100%; border-radius:4px; background:var(--teal); transition:width .6s ease; }
 
   /* readiness matrix */
   .rm-scroll{ overflow-x:auto; }
@@ -242,7 +264,7 @@
   input#file-input{ display:none; }
 
   @media (max-width: 1100px){
-    .kpi-grid{ grid-template-columns:repeat(4,1fr); }
+    .kpi-grid{ grid-template-columns:repeat(3,1fr); }
     .row-2{ grid-template-columns:1fr; }
     .row-3{ grid-template-columns:1fr; }
   }
@@ -250,8 +272,8 @@
     .kpi-grid{ grid-template-columns:repeat(2,1fr); }
     header.top{ padding:16px; }
     main{ padding:18px; }
-    .track-node{ width:70px; }
-    .track-node .name{ font-size:10px; }
+    .track-wrap{ padding:20px 18px; }
+    .track-nodes{ grid-template-columns:1fr 1fr; }
   }
 </style>
 </head>
@@ -297,10 +319,19 @@
         <h3 class="display">Critical Path — Track to Opening</h3>
         <div class="overall-pct"><b id="overall-pct">0%</b> overall complete</div>
       </div>
-      <div class="track">
-        <div class="track-line"><div class="track-line-fill" id="track-fill" style="width:0%"></div></div>
-        <div class="track-nodes" id="track-nodes"></div>
+
+      <div class="runway">
+        <div class="runway-bar">
+          <div class="runway-fill" id="track-fill" style="width:0%"></div>
+          <div class="runway-marker" id="runway-marker" style="left:0%"><span class="runway-marker-pct mono" id="runway-marker-pct">0%</span></div>
+        </div>
+        <div class="runway-ends">
+          <span class="mono" id="runway-start">Today</span>
+          <span class="runway-flag">🏁 <span class="mono" id="runway-end">Opening</span></span>
+        </div>
       </div>
+
+      <div class="track-nodes" id="track-nodes"></div>
     </div>
 
     <!-- KPI cards -->
@@ -309,12 +340,12 @@
     <!-- Bar chart + Milestones -->
     <div class="row-2">
       <div class="panel">
-        <h3 class="display">Tasks per Department <span class="dim">— items, complete &amp; in progress</span></h3>
+        <h3 class="display">Tasks per Department <span class="dim">— % complete, in progress &amp; pending</span></h3>
         <div id="bar-chart"></div>
         <div class="legend-row">
           <div class="legend-item"><span class="legend-swatch" style="background:var(--green)"></span>Complete</div>
           <div class="legend-item"><span class="legend-swatch" style="background:var(--orange)"></span>In Progress</div>
-          <div class="legend-item"><span class="legend-swatch" style="background:var(--bg-raised); border:1px solid var(--border);"></span>Remaining</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:var(--bg-raised); border:1px solid var(--border);"></span>Pending</div>
         </div>
       </div>
       <div>
@@ -324,11 +355,13 @@
           <div style="font-size:12px; color:var(--ink-dim); margin-top:2px;">Critical milestones tracked</div>
           <div class="milestone-list" id="milestone-list"></div>
         </div>
-        <div class="panel timeline-panel">
-          <h3 class="display">Department Timeline</h3>
-          <div id="timeline"></div>
-        </div>
       </div>
+    </div>
+
+    <!-- Department timeline (full width) -->
+    <div class="panel timeline-panel">
+      <h3 class="display">Department Timeline <span class="dim">— start to finish, through opening day</span></h3>
+      <div id="timeline"></div>
     </div>
 
     <!-- Donuts -->
@@ -348,12 +381,6 @@
         <div class="donut-wrap"><svg viewBox="0 0 120 120" id="donut-completion"></svg><div class="donut-center"><div class="n" id="donut-completion-n">0</div><div class="l">Tasks</div></div></div>
         <div class="legend-row" id="donut-completion-legend"></div>
       </div>
-    </div>
-
-    <!-- Completion progress -->
-    <div class="panel">
-      <h3 class="display">Completion Progress</h3>
-      <div class="progress-list" id="progress-list"></div>
     </div>
 
     <!-- Departments readiness per owner -->
