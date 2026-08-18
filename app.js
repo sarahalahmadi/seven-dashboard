@@ -439,7 +439,6 @@ function renderReadinessMatrix(ownerList, readinessMatrix) {
     const tip = `${fmt(c.complete)} complete + ${fmt(c.inProgress)} in progress of ${fmt(c.items)} items`;
     return `<td class="rm-cell ${extraClass || ""}" title="${tip}">
       <span class="rm-pill mono" style="background:${pctColor(c.pct)}22; color:${pctColor(c.pct)};">${c.pct}%</span>
-      <span class="rm-sub mono">${c.completePct}% done</span>
     </td>`;
   };
 
