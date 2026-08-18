@@ -1,3 +1,4 @@
+[README.md](https://github.com/user-attachments/files/31178865/README.md)
 # SEVEN — Critical Path Dashboard
 
 A standalone dashboard for tracking the Madina SEVEN critical path. You own every file here — there's no account, no third-party builder, and no backend. It's just three files that run entirely in the browser.
@@ -6,7 +7,7 @@ A standalone dashboard for tracking the Madina SEVEN critical path. You own ever
 
 - `index.html` — page structure
 - `app.js` — reads your Excel file and draws every chart
-- `assets/logo.png` — your logo
+- `logo.png` — your logo
 - (styling lives inside `index.html` in a `<style>` block)
 
 ## How it works
@@ -14,6 +15,16 @@ A standalone dashboard for tracking the Madina SEVEN critical path. You own ever
 Click **"Update from Excel"** (or drag a file onto the upload area) and pick your tracker file. It reads the **"Critical Path"** tab specifically — the same one your current dashboard uses — and expects these columns: `Department`, `Label`, `Start Date`, `End Date`, `Status`, `Key Milestone (Y/N)`, `Owner`, `Items`, `Complete`, `In-Progress`, `Starting Date Delayed`, `Completion Date Overdue`, `Not Started Yet`. It also looks anywhere in the workbook for a cell literally labeled "Opening Date" to drive the countdown.
 
 Nothing is uploaded anywhere — the file is parsed on your own machine in memory, so this is safe to use with confidential project data.
+
+## What's on the page
+
+1. **Critical Path — Track to Opening**: one runway bar for overall % complete (today → opening day), then a card per department, each with its own progress ring and an "At risk" tag when that department has delayed starts or overdue completions.
+2. **KPI cards**: Total Items, Completed, In Progress, Not Started, Start Delayed, Completion Overdue.
+3. **Tasks per Department**: each column is a full 0–100% scale, split into Complete / In Progress / Pending, with % complete above and the item count below.
+4. **Key Milestones**: anything flagged `Y` in the Key Milestone column.
+5. **Department Timeline**: full-width Gantt-style bars, with the scale running all the way through to opening day (not just to the last dated task) and a teal line marking opening day.
+6. **Donuts**: status, start-time, and completion breakdowns.
+7. **Departments Readiness per Owner**: % complete by department × owning team.
 
 ## Running it locally
 
@@ -48,4 +59,4 @@ Either way, updating the site later just means editing these files and re-upload
 
 - **Colors**: all defined as CSS variables at the top of the `<style>` block in `index.html` (`--teal`, `--orange`, `--magenta`, `--blue`, etc.) — change one value and it updates everywhere.
 - **Departments**: the order and colors are set in `DEPT_ORDER` and `DEPT_COLORS` at the top of `app.js`. Add or reorder department names there if your project structure changes.
-- **Logo**: just replace `assets/logo.png` with a new file of the same name.
+- **Logo**: just replace `logo.png` with a new file of the same name.
