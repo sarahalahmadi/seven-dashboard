@@ -1,4 +1,4 @@
-[README.md](https://github.com/user-attachments/files/31180122/README.md)
+[README.md](https://github.com/user-attachments/files/31180423/README.md)
 # SEVEN — Critical Path Dashboard
 
 A standalone dashboard for tracking the Madina SEVEN critical path. You own every file here — there's no account, no third-party builder, and no backend. It's just three files that run entirely in the browser.
@@ -24,7 +24,7 @@ Nothing is uploaded anywhere — the file is parsed on your own machine in memor
 4. **Key Milestones**: anything flagged `Y` in the Key Milestone column.
 5. **Department Timeline**: full-width Gantt-style bars, with the scale running all the way through to opening day (not just to the last dated task) and a teal line marking opening day.
 6. **Donuts**: status, start-time, and completion breakdowns.
-7. **Departments Readiness per Owner**: % of items **started** (complete + in progress) by department × owning team. The small grey figure under each pill is the complete-only %; hover a cell for the raw counts.
+7. **Departments Readiness per Owner**: % of items **started** (complete + in progress) by department × owning team. Hover a cell for the raw counts.
 
 ## Running it locally
 
