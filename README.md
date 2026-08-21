@@ -1,3 +1,4 @@
+[README.md](https://github.com/user-attachments/files/31307839/README.md)
 # SEVEN — Critical Path Dashboard
 
 A standalone dashboard for tracking the Madina SEVEN critical path. You own every file here — there's no account, no third-party builder, and no backend. It's just three files that run entirely in the browser.
@@ -60,18 +61,22 @@ Either way, updating the site later just means editing these files and re-upload
 - **Departments**: the order and colors are set in `DEPT_ORDER` and `DEPT_COLORS` at the top of `app.js`. Add or reorder department names there if your project structure changes.
 - **Logo**: just replace `logo.png` with a new file of the same name.
 
-## Visualizer (generic file reader)
+## Visualizer (editable dashboard builder)
 
-Alongside the Critical Path dashboard there's now a second page, **`visualizer.html`**, that reads *any* Excel or CSV and builds a dashboard from it automatically — no fixed format, no "critical path" assumptions.
+Alongside the Critical Path dashboard there's a second page, **`visualizer.html`**, that reads *any* Excel or CSV and builds a dashboard you can then edit yourself.
 
-- **`home.html`** — a simple launcher with two doors: Critical Path Dashboard and Visualizer.
-- **`visualizer.html`** + **`visualizer.js`** — the generic reader.
+- **`home.html`** — launcher with two doors: Critical Path Dashboard and Visualizer.
+- **`visualizer.html`** + **`visualizer.js`** — the builder.
 
-Drop in a spreadsheet and it detects each column's type (text / number / date), then:
-- totals every numeric column into KPI cards,
-- builds a bar chart of a category vs a measure (both changeable from dropdowns),
-- draws donut breakdowns for small-category text columns,
-- lets you **name the dashboard** — click the big title at the top and type. The name defaults to a cleaned-up version of the filename, and is remembered for that file next time you open it.
-- shows a numeric summary (sum / average / min / max) and a data preview.
+Drop in a spreadsheet and it detects each column's type (text / number / date) and generates a starting dashboard. From there you control everything:
+
+- **+ Add chart** — pick from 10 types: KPI number, bar, horizontal bar, stacked bar, line, area, donut, pie, progress bars, table.
+- **Per chart** (hover the card): edit ✎, duplicate ⧉, move ◀ ▶, remove ✕.
+- **In the editor**: chart type, title, group-by column, split-by column (for stacked), measure (count / sum / average / min / max) and which column to measure, size (quarter / half / full width), how many items to show, and sort order.
+- **Name the dashboard** — click the big title and type.
+- **↻ Auto-rebuild** regenerates the automatic starting layout.
+- **⎙ Print / PDF** produces a clean printable version with the editing controls hidden.
+
+Your layout and title are remembered per file and sheet, so reopening the same file brings your dashboard back exactly as you left it.
 
 It works best on a clean table (one header row, one record per row). Everything runs in the browser — files never leave the machine. The Critical Path dashboard (`index.html` + `app.js`) is untouched.
