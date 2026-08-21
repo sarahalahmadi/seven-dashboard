@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SEVEN — Visualizer</title>
+<link rel="icon" href="logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg-void:#0B0E14; --bg-panel:#131826; --bg-panel-alt:#171e2e; --bg-raised:#1c2438;
+    --border:#242c40; --ink:#EDEFF3; --ink-dim:#8891A3; --ink-faint:#545E72;
+    --teal:#0CAFBF; --orange:#F19A27; --magenta:#E01A4F; --blue:#1560A8; --green:#17B978;
+    --radius:14px;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ background:var(--bg-void); color:var(--ink); font-family:'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  body{
+    background-image:
+      radial-gradient(circle at 12% 8%, rgba(12,175,191,0.06), transparent 40%),
+      radial-gradient(circle at 88% 92%, rgba(224,26,79,0.05), transparent 40%);
+    min-height:100vh; padding-bottom:64px;
+  }
+  .display{ font-family:'Space Grotesk',sans-serif; }
+  .mono{ font-family:'IBM Plex Mono',monospace; }
+  a{ color:inherit; text-decoration:none; }
+
+  header.top{
+    display:flex; align-items:center; justify-content:space-between; gap:24px;
+    padding:22px 32px; border-bottom:1px solid var(--border);
+    background:rgba(19,24,38,0.6); backdrop-filter:blur(10px);
+    position:sticky; top:0; z-index:50; flex-wrap:wrap;
+  }
+  .brand{ display:flex; align-items:center; gap:14px; }
+  .brand img{ width:40px; height:40px; border-radius:9px; object-fit:cover; }
+  .brand .name{ font-family:'Space Grotesk',sans-serif; font-weight:600; letter-spacing:2px; font-size:14px; color:var(--ink-dim); }
+  .brand .name b{ color:var(--ink); font-weight:700; }
+  .top-actions{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .btn{
+    display:inline-flex; align-items:center; gap:8px; cursor:pointer;
+    border:1px solid var(--border); background:var(--bg-raised); color:var(--ink);
+    padding:10px 16px; border-radius:10px; font-size:13px; font-weight:600; font-family:'Inter',sans-serif;
+  }
+  .btn.primary{ background:var(--teal); border-color:var(--teal); color:#04262a; }
+  .btn.ghost{ background:transparent; }
+  .btn:hover{ filter:brightness(1.08); }
+
+  main{ max-width:1500px; margin:0 auto; padding:28px 32px; }
+
+  /* empty / upload state */
+  #empty-state{ display:flex; flex-direction:column; align-items:center; gap:20px; padding:60px 20px; }
+  #drop-zone{
+    width:100%; max-width:640px; border:2px dashed var(--border); border-radius:20px;
+    padding:56px 32px; text-align:center; background:var(--bg-panel); transition:all .15s;
+  }
+  #drop-zone.drag{ border-color:var(--teal); background:var(--bg-panel-alt); }
+  #drop-zone h2{ font-family:'Space Grotesk',sans-serif; font-size:22px; margin-bottom:10px; }
+  #drop-zone p{ color:var(--ink-dim); font-size:14px; margin-bottom:22px; }
+  .hint{ color:var(--ink-faint); font-size:12.5px; max-width:520px; text-align:center; line-height:1.6; }
+
+  /* file bar */
+  .title-row{ display:flex; align-items:baseline; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+  .board-title{
+    background:transparent; border:none; border-bottom:2px solid transparent;
+    color:var(--ink); font-size:28px; font-weight:600; padding:2px 4px;
+    min-width:280px; max-width:100%; width:auto; outline:none; transition:border-color .15s;
+  }
+  .board-title:hover{ border-bottom-color:var(--border); }
+  .board-title:focus{ border-bottom-color:var(--teal); }
+  .board-title::placeholder{ color:var(--ink-faint); font-style:italic; }
+  .title-hint{ font-size:11.5px; color:var(--ink-faint); opacity:0; transition:opacity .15s; }
+  .title-row:hover .title-hint{ opacity:1; }
+
+  .file-bar{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:22px; }
+  .file-chip{ display:flex; align-items:center; gap:10px; background:var(--bg-panel); border:1px solid var(--border); border-radius:10px; padding:8px 14px; font-size:13px; }
+  .file-chip .dot{ width:8px; height:8px; border-radius:50%; background:var(--green); }
+  select.pill{
+    background:var(--bg-raised); color:var(--ink); border:1px solid var(--border);
+    border-radius:10px; padding:9px 12px; font-size:13px; font-family:'Inter',sans-serif;
+  }
+  .ctrl-group{ display:flex; align-items:center; gap:8px; }
+  .ctrl-group label{ font-size:12px; color:var(--ink-dim); }
+
+  .panel{ background:var(--bg-panel); border:1px solid var(--border); border-radius:var(--radius); padding:20px 22px; margin-bottom:20px; }
+  .panel h3{ font-size:15px; margin-bottom:16px; }
+  .v-sub{ font-size:13px; color:var(--ink-dim); margin-bottom:14px; }
+
+  .kpi-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:20px; }
+  .kpi-card{ background:var(--bg-panel); border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:12px; padding:16px 18px; }
+  .kpi-card .label{ font-size:11px; letter-spacing:.5px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:8px; }
+  .kpi-card .value{ font-size:28px; font-weight:600; }
+
+  /* main bar chart */
+  #main-chart{ display:flex; align-items:flex-end; gap:14px; height:260px; padding-top:20px; overflow-x:auto; }
+  .v-bar-col{ display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:6px; min-width:52px; flex:1; }
+  .v-bar-val{ font-size:11px; color:var(--ink); }
+  .v-bar{ width:100%; max-width:56px; border-radius:6px 6px 0 0; transition:height .2s; }
+  .v-bar-label{ font-size:10.5px; color:var(--ink-dim); text-align:center; word-break:break-word; max-width:70px; line-height:1.3; }
+
+  /* donuts */
+  #donut-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px; }
+  .v-donut-body{ display:flex; align-items:center; gap:18px; }
+  .v-donut-num{ fill:var(--ink); font-size:20px; font-weight:600; }
+  .v-donut-cap{ fill:var(--ink-dim); font-size:9px; letter-spacing:1px; text-transform:uppercase; }
+  .v-legend{ display:flex; flex-direction:column; gap:7px; }
+  .v-leg{ font-size:12px; color:var(--ink-dim); display:flex; align-items:center; gap:8px; }
+  .v-sw{ width:11px; height:11px; border-radius:3px; display:inline-block; }
+  .v-leg-n{ color:var(--ink); margin-left:auto; }
+
+  /* tables */
+  .v-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  .v-table th{ text-align:left; color:var(--ink-dim); font-weight:600; font-size:11px; letter-spacing:.4px; text-transform:uppercase; padding:9px 12px; border-bottom:1px solid var(--border); }
+  .v-table td{ padding:9px 12px; border-bottom:1px solid rgba(36,44,64,0.5); color:var(--ink); }
+  .v-td-name{ color:var(--ink); font-weight:500; }
+  .table-scroll{ overflow-x:auto; }
+  #table-caption{ color:var(--ink-faint); font-size:11.5px; margin-top:10px; }
+
+  .grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  @media (max-width:1000px){ .grid-2{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="logo.png" alt="SEVEN" />
+      <div class="name"><b>SEVEN</b> — VISUALIZER</div>
+    </div>
+    <div class="top-actions">
+      <div class="ctrl-group" id="sheet-wrap">
+        <label>Sheet</label>
+        <select class="pill" id="sheet-select" style="display:none"></select>
+      </div>
+      <a class="btn ghost" href="index.html">← Critical Path</a>
+      <button class="btn primary" id="upload-btn">⇧ Open a file</button>
+      <input type="file" id="file-input" accept=".xlsx,.xls,.csv" style="display:none" />
+    </div>
+  </header>
+
+  <main>
+    <!-- Empty / upload state -->
+    <div id="empty-state">
+      <div id="drop-zone">
+        <h2 class="display">Drop any spreadsheet here</h2>
+        <p>Excel (.xlsx, .xls) or CSV — it reads the columns and builds a dashboard automatically.</p>
+        <button class="btn primary" onclick="document.getElementById('file-input').click()">Choose a file</button>
+      </div>
+      <div class="hint">Nothing is uploaded anywhere — your file is read right here in your browser, so it's safe for confidential data. Works best with a clean table: one header row, one record per row.</div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="board" style="display:none">
+      <div class="title-row">
+        <input id="board-title" class="board-title display" placeholder="Name this dashboard…" spellcheck="false" />
+        <span class="title-hint" id="title-hint">click to rename</span>
+      </div>
+
+      <div class="file-bar">
+        <div class="file-chip"><span class="dot"></span><span id="file-name" class="mono">—</span></div>
+        <div class="ctrl-group">
+          <label>Group by</label>
+          <select class="pill" id="group-select"></select>
+        </div>
+        <div class="ctrl-group">
+          <label>Measure</label>
+          <select class="pill" id="measure-select"></select>
+        </div>
+      </div>
+
+      <div class="kpi-grid" id="kpi-grid"></div>
+
+      <div class="panel">
+        <h3 class="display" id="main-chart-title">Chart</h3>
+        <div id="main-chart"></div>
+      </div>
+
+      <div id="donut-row"></div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <h3 class="display">Numeric summary</h3>
+          <div class="table-scroll"><div id="numeric-summary"></div></div>
+        </div>
+        <div class="panel">
+          <h3 class="display">Data preview</h3>
+          <div class="table-scroll"><div id="table-preview"></div></div>
+          <div id="table-caption"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="visualizer.js"></script>
+</body>
+</html>

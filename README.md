@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/31180585/README.md)
 # SEVEN — Critical Path Dashboard
 
 A standalone dashboard for tracking the Madina SEVEN critical path. You own every file here — there's no account, no third-party builder, and no backend. It's just three files that run entirely in the browser.
@@ -60,3 +59,19 @@ Either way, updating the site later just means editing these files and re-upload
 - **Colors**: all defined as CSS variables at the top of the `<style>` block in `index.html` (`--teal`, `--orange`, `--magenta`, `--blue`, etc.) — change one value and it updates everywhere.
 - **Departments**: the order and colors are set in `DEPT_ORDER` and `DEPT_COLORS` at the top of `app.js`. Add or reorder department names there if your project structure changes.
 - **Logo**: just replace `logo.png` with a new file of the same name.
+
+## Visualizer (generic file reader)
+
+Alongside the Critical Path dashboard there's now a second page, **`visualizer.html`**, that reads *any* Excel or CSV and builds a dashboard from it automatically — no fixed format, no "critical path" assumptions.
+
+- **`home.html`** — a simple launcher with two doors: Critical Path Dashboard and Visualizer.
+- **`visualizer.html`** + **`visualizer.js`** — the generic reader.
+
+Drop in a spreadsheet and it detects each column's type (text / number / date), then:
+- totals every numeric column into KPI cards,
+- builds a bar chart of a category vs a measure (both changeable from dropdowns),
+- draws donut breakdowns for small-category text columns,
+- lets you **name the dashboard** — click the big title at the top and type. The name defaults to a cleaned-up version of the filename, and is remembered for that file next time you open it.
+- shows a numeric summary (sum / average / min / max) and a data preview.
+
+It works best on a clean table (one header row, one record per row). Everything runs in the browser — files never leave the machine. The Critical Path dashboard (`index.html` + `app.js`) is untouched.
