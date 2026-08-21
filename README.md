@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/31307839/README.md)
 # SEVEN — Critical Path Dashboard
 
 A standalone dashboard for tracking the Madina SEVEN critical path. You own every file here — there's no account, no third-party builder, and no backend. It's just three files that run entirely in the browser.
@@ -80,3 +79,27 @@ Drop in a spreadsheet and it detects each column's type (text / number / date) a
 Your layout and title are remembered per file and sheet, so reopening the same file brings your dashboard back exactly as you left it.
 
 It works best on a clean table (one header row, one record per row). Everything runs in the browser — files never leave the machine. The Critical Path dashboard (`index.html` + `app.js`) is untouched.
+
+## Live (SeaTable)
+
+A third page, **`live.html`**, connects to SeaTable so dashboards update themselves — no file to upload. It uses the same chart builder as the Visualizer, so every chart is editable, and your layout is reapplied each time the data refreshes.
+
+Two ways to connect:
+
+1. **Scheduled snapshot (recommended)** — a GitHub Action fetches the rows on a schedule into `data/live.json`; the token lives in GitHub Secrets and never reaches a browser.
+2. **Direct connect** — enter the server, token and table in the page; nothing is written into the site's code. Only works if your SeaTable server allows direct browser access.
+
+Full setup instructions, including the security decision about your public repo, are in **`SEATABLE-SETUP.md`**.
+
+## File map
+
+| File | Purpose |
+|---|---|
+| `home.html` | launcher — three doors |
+| `index.html` + `app.js` | Critical Path dashboard (hand-built for that file) |
+| `visualizer.html` + `visualizer.js` | Visualizer — upload any file |
+| `live.html` + `live.js` | Live — connected to SeaTable |
+| `engine.js` | shared chart builder used by Visualizer and Live |
+| `scripts/fetch_seatable.py` | SeaTable → `data/live.json` |
+| `.github/workflows/refresh-data.yml` | scheduled refresh |
+| `logo.png` | logo |
