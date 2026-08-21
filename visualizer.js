@@ -1,65 +1,83 @@
 /* ============================================================
    SEVEN — Visualizer
-   A generic dashboard reader. Drop in any Excel/CSV, and it
-   detects the columns on its own and renders KPI cards, bar
-   charts, and donuts named after whatever is actually in the
-   file. No "critical path" concepts are assumed anywhere.
+   An editable dashboard builder. Drop in any Excel/CSV, get a
+   generated starting dashboard, then add / edit / remove / resize
+   any chart. Layouts are remembered per file.
    ============================================================ */
 
-const PALETTE = ["#0CAFBF", "#F19A27", "#E01A4F", "#1560A8", "#17B978", "#9B5DE5", "#F15BB5", "#00BBF9"];
+const PALETTE = ["#0CAFBF", "#F19A27", "#E01A4F", "#1560A8", "#17B978", "#9B5DE5", "#F15BB5", "#00BBF9", "#FEE440", "#FB5607"];
+const colorFor = (i) => PALETTE[i % PALETTE.length];
+
+const CHART_TYPES = [
+  { id: "kpi",      name: "KPI number" },
+  { id: "bar",      name: "Bar (vertical)" },
+  { id: "hbar",     name: "Bar (horizontal)" },
+  { id: "stacked",  name: "Stacked bar" },
+  { id: "line",     name: "Line" },
+  { id: "area",     name: "Area" },
+  { id: "donut",    name: "Donut" },
+  { id: "pie",      name: "Pie" },
+  { id: "progress", name: "Progress bars" },
+  { id: "table",    name: "Table" },
+];
+
+const AGGS = [
+  { id: "count", name: "Count of rows" },
+  { id: "sum",   name: "Sum" },
+  { id: "avg",   name: "Average" },
+  { id: "min",   name: "Minimum" },
+  { id: "max",   name: "Maximum" },
+];
 
 const state = {
   fileName: "",
   boardTitle: "",
+  wb: null,
   sheetNames: [],
   activeSheet: "",
-  columns: [],       // [{name, type, values, numericValues, filled}]
-  rows: [],          // array of objects
-  groupBy: null,     // column name currently grouped by
-  measure: null,     // numeric column name currently measured (or "__count__")
+  columns: [],
+  rows: [],
+  charts: [],
+  editingId: null,
 };
-
-/* Turn "Sales_Report_Q3 (2).xlsx" into "Sales Report Q3" for a sensible default name. */
-function prettifyFileName(name) {
-  return name
-    .replace(/\.(xlsx|xls|csv)$/i, "")
-    .replace(/\s*\(\d+\)\s*$/, "")
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-const TITLE_STORE = "seven-visualizer-titles";
-function savedTitleFor(fileName) {
-  try { return (JSON.parse(localStorage.getItem(TITLE_STORE) || "{}"))[fileName] || null; }
-  catch { return null; }
-}
-function saveTitleFor(fileName, title) {
-  try {
-    const all = JSON.parse(localStorage.getItem(TITLE_STORE) || "{}");
-    if (title && title.trim()) all[fileName] = title.trim(); else delete all[fileName];
-    localStorage.setItem(TITLE_STORE, JSON.stringify(all));
-  } catch { /* storage unavailable — title just won't persist */ }
-}
 
 /* ---------- helpers ---------- */
 const fmt = (n) => {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  if (Math.abs(n) >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  if (Math.abs(n) >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
+  if (Math.abs(n) >= 1000) return Math.round(n).toLocaleString();
   return (Math.round(n * 100) / 100).toLocaleString();
 };
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const colorFor = (i) => PALETTE[i % PALETTE.length];
+const fmtFull = (n) => (n === null || n === undefined || Number.isNaN(n)) ? "—" : (Math.round(n * 100) / 100).toLocaleString();
+const esc = (s) => String(s === null || s === undefined ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const uid = () => "c" + Math.random().toString(36).slice(2, 9);
+const clip = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const exp = Math.floor(Math.log10(v));
+  const f = v / Math.pow(10, exp);
+  const nf = f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10;
+  return nf * Math.pow(10, exp);
+}
+
+function excelSerialToDate(n) { return new Date(Date.UTC(1899, 11, 30) + n * 86400000); }
+
+function toNumber(v) {
+  if (typeof v === "number") return isFinite(v) ? v : null;
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(String(v).replace(/,/g, ""));
+  return isNaN(n) ? null : n;
+}
+
+/* ---------- column typing ---------- */
 function detectType(values, header) {
   let nums = 0, dates = 0, nonEmpty = 0;
-  const looksDatey = header && /date|day|start|end|deadline|due|opening/i.test(header);
+  const looksDatey = header && /date|day|start|end|deadline|due|opening|month|year/i.test(header);
   for (const v of values) {
     if (v === null || v === undefined || v === "") continue;
     nonEmpty++;
     if (typeof v === "number" && isFinite(v)) {
-      // Excel stores dates as serial numbers, typically ~40000–50000 for 2010–2036.
-      // If the column name hints at a date and the values sit in that band, treat as date.
       if (looksDatey && v > 30000 && v < 60000) { dates++; continue; }
       nums++; continue;
     }
@@ -74,247 +92,571 @@ function detectType(values, header) {
   return "text";
 }
 
-function toNumber(v) {
-  if (typeof v === "number") return v;
-  if (v === null || v === undefined || v === "") return null;
-  const n = Number(String(v).replace(/,/g, ""));
-  return isNaN(n) ? null : n;
-}
-
-/* ---------- read a workbook / csv ---------- */
+/* ---------- loading ---------- */
 function loadWorkbook(wb) {
+  state.wb = wb;
   state.sheetNames = wb.SheetNames.slice();
-  // Prefer the sheet with the most rows of data.
   let best = wb.SheetNames[0], bestRows = -1;
   for (const name of wb.SheetNames) {
-    const json = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: "" });
-    if (json.length > bestRows) { bestRows = json.length; best = name; }
+    const n = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: "" }).length;
+    if (n > bestRows) { bestRows = n; best = name; }
   }
-  state.wb = wb;
-  selectSheet(best);
+  selectSheet(best, true);
 }
 
-function selectSheet(name) {
+function selectSheet(name, restoreLayout) {
   state.activeSheet = name;
   const ws = state.wb.Sheets[name];
-  // Find the header row: the first row where most cells are non-empty text.
   const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+
   let headerIdx = 0, bestScore = -1;
   for (let i = 0; i < Math.min(aoa.length, 15); i++) {
-    const row = aoa[i];
+    const row = aoa[i] || [];
     const filled = row.filter((c) => c !== "" && c !== null).length;
     const textish = row.filter((c) => typeof c === "string" && c.trim() !== "").length;
     const score = filled + textish;
     if (score > bestScore) { bestScore = score; headerIdx = i; }
   }
-  const headers = aoa[headerIdx].map((h, i) => (h === "" || h === null) ? `Column ${i + 1}` : String(h).trim());
+  const seen = {};
+  const headers = (aoa[headerIdx] || []).map((h, i) => {
+    let base = (h === "" || h === null) ? "Column " + (i + 1) : String(h).trim();
+    if (seen[base]) { seen[base]++; base = base + " (" + seen[base] + ")"; } else seen[base] = 1;
+    return base;
+  });
   const dataRows = aoa.slice(headerIdx + 1).filter((r) => r.some((c) => c !== "" && c !== null));
 
-  const rows = dataRows.map((r) => {
+  state.rows = dataRows.map((r) => {
     const o = {};
     headers.forEach((h, i) => { o[h] = r[i] === undefined ? "" : r[i]; });
     return o;
   });
 
-  const columns = headers.map((name) => {
-    const values = rows.map((r) => r[name]);
-    const type = detectType(values, name);
-    return {
-      name,
-      type,
-      values,
-      numericValues: type === "number" ? values.map(toNumber) : null,
-      filled: values.filter((v) => v !== "" && v !== null && v !== undefined).length,
-    };
+  state.columns = headers.map((nm) => {
+    const values = state.rows.map((r) => r[nm]);
+    const type = detectType(values, nm);
+    const distinct = type === "text" ? new Set(values.map((v) => String(v))).size : null;
+    return { name: nm, type, distinct, filled: values.filter((v) => v !== "" && v !== null).length };
   }).filter((c) => c.filled > 0);
 
-  state.columns = columns;
-  state.rows = rows;
-
-  // Auto-pick a sensible default group-by (a text column with a moderate number of
-  // distinct values) and a default measure (first numeric column, else row count).
-  const textCols = columns.filter((c) => c.type === "text");
-  let group = null, bestGroupScore = Infinity;
-  for (const c of textCols) {
-    const distinct = new Set(c.values.map((v) => String(v))).size;
-    if (distinct < 2 || distinct > 40) continue;
-    const score = Math.abs(distinct - 7); // prefer ~7 categories
-    if (score < bestGroupScore) { bestGroupScore = score; group = c.name; }
+  const saved = restoreLayout ? loadLayout() : null;
+  if (saved && saved.charts && saved.charts.length) {
+    state.charts = saved.charts;
+    if (saved.title) state.boardTitle = saved.title;
+  } else {
+    state.charts = autoCharts();
   }
-  state.groupBy = group || (textCols[0] && textCols[0].name) || null;
+  renderAll();
+}
 
-  const numCols = columns.filter((c) => c.type === "number");
-  const preferred = numCols.find((c) => /item|count|total|qty|quantity|amount|value|revenue|sales/i.test(c.name));
-  state.measure = preferred ? preferred.name : (numCols.length ? "__count__" : "__count__");
+/* ---------- auto-generated starting dashboard ---------- */
+function autoCharts() {
+  const textCols = state.columns.filter((c) => c.type === "text");
+  const numCols = state.columns.filter((c) => c.type === "number");
+  const dateCols = state.columns.filter((c) => c.type === "date");
 
-  render();
+  // Skip free-text columns (descriptions, notes, labels) — they make useless categories.
+  const rowCount = state.rows.length || 1;
+  const isCategorical = (c) => c.distinct >= 2 && c.distinct <= 40
+    && (c.distinct / rowCount) < 0.5
+    && !/detail|description|note|comment|remark|label|title|name of|summary/i.test(c.name);
+
+  const groupCandidates = textCols.filter(isCategorical)
+    .sort((a, b) => Math.abs(a.distinct - 7) - Math.abs(b.distinct - 7));
+  const mainGroup = groupCandidates[0] ? groupCandidates[0].name : (textCols[0] ? textCols[0].name : null);
+  const secondGroup = groupCandidates[1] ? groupCandidates[1].name : null;
+  const smallCat = textCols.filter((c) => isCategorical(c) && c.distinct <= 8).sort((a, b) => a.distinct - b.distinct)[0];
+
+  const preferred = numCols.find((c) => /item|count|total|qty|quantity|amount|value|revenue|sales|budget/i.test(c.name)) || numCols[0];
+  const measure = preferred ? preferred.name : null;
+
+  const charts = [];
+  charts.push({ id: uid(), type: "kpi", title: "Total rows", agg: "count", measure: null, groupBy: null, width: "quarter" });
+  numCols.slice(0, 3).forEach((c) => {
+    charts.push({ id: uid(), type: "kpi", title: "Total " + c.name, agg: "sum", measure: c.name, groupBy: null, width: "quarter" });
+  });
+
+  if (mainGroup) {
+    charts.push({
+      id: uid(), type: "bar",
+      title: measure ? measure + " by " + mainGroup : "Rows by " + mainGroup,
+      agg: measure ? "sum" : "count", measure: measure, groupBy: mainGroup, width: "full", limit: 14, sort: "desc",
+    });
+  }
+  if (smallCat) {
+    charts.push({ id: uid(), type: "donut", title: "Breakdown by " + smallCat.name, agg: "count", measure: null, groupBy: smallCat.name, width: "half", limit: 8, sort: "desc" });
+  }
+  if (secondGroup) {
+    charts.push({
+      id: uid(), type: "hbar",
+      title: measure ? measure + " by " + secondGroup : "Rows by " + secondGroup,
+      agg: measure ? "sum" : "count", measure: measure, groupBy: secondGroup, width: "half", limit: 10, sort: "desc",
+    });
+  }
+  if (dateCols.length && measure) {
+    charts.push({ id: uid(), type: "area", title: measure + " over time", agg: "sum", measure: measure, groupBy: dateCols[0].name, width: "full", limit: 24, sort: "date" });
+  }
+  if (mainGroup) {
+    charts.push({ id: uid(), type: "table", title: "Summary table", agg: measure ? "sum" : "count", measure: measure, groupBy: mainGroup, width: "full", limit: 12, sort: "desc" });
+  }
+  return charts;
 }
 
 /* ---------- aggregation ---------- */
-function aggregate(groupCol, measureCol) {
+function computeValue(agg, vals, count) {
+  if (agg === "count") return count;
+  if (!vals.length) return 0;
+  const sum = vals.reduce((a, b) => a + b, 0);
+  if (agg === "sum") return sum;
+  if (agg === "avg") return sum / vals.length;
+  if (agg === "min") return Math.min.apply(null, vals);
+  if (agg === "max") return Math.max.apply(null, vals);
+  return sum;
+}
+
+function colType(name) {
+  const c = state.columns.find((x) => x.name === name);
+  return c ? c.type : "text";
+}
+
+function groupKey(row, col) {
+  const v = row[col];
+  if (v === "" || v === null || v === undefined) return "(blank)";
+  if (colType(col) === "date") {
+    let d = null;
+    if (typeof v === "number") d = excelSerialToDate(v);
+    else { const t = Date.parse(String(v)); if (!isNaN(t)) d = new Date(t); }
+    if (d && !isNaN(d.getTime())) return d.toISOString().slice(0, 7);
+  }
+  return String(v);
+}
+
+function aggregate(chart) {
   const map = new Map();
   for (const r of state.rows) {
-    const key = (r[groupCol] === "" || r[groupCol] === null || r[groupCol] === undefined) ? "(blank)" : String(r[groupCol]);
-    if (!map.has(key)) map.set(key, { key, count: 0, sum: 0 });
-    const bucket = map.get(key);
-    bucket.count++;
-    if (measureCol && measureCol !== "__count__") {
-      const n = toNumber(r[measureCol]);
-      if (n !== null) bucket.sum += n;
-    }
+    const key = chart.groupBy ? groupKey(r, chart.groupBy) : "All";
+    if (!map.has(key)) map.set(key, { key: key, vals: [], count: 0 });
+    const b = map.get(key);
+    b.count++;
+    if (chart.measure) { const n = toNumber(r[chart.measure]); if (n !== null) b.vals.push(n); }
   }
-  const arr = [...map.values()];
-  const useCount = !measureCol || measureCol === "__count__";
-  arr.forEach((b) => { b.value = useCount ? b.count : b.sum; });
-  arr.sort((a, b) => b.value - a.value);
+  let arr = Array.from(map.values()).map((b) => ({ key: b.key, value: computeValue(chart.agg, b.vals, b.count) }));
+  const isDate = chart.groupBy && colType(chart.groupBy) === "date";
+  if (chart.sort === "date" || isDate) arr.sort((a, b) => a.key.localeCompare(b.key));
+  else if (chart.sort === "asc") arr.sort((a, b) => a.value - b.value);
+  else if (chart.sort === "label") arr.sort((a, b) => a.key.localeCompare(b.key));
+  else arr.sort((a, b) => b.value - a.value);
+  if (chart.limit && arr.length > chart.limit) arr = arr.slice(0, chart.limit);
   return arr;
 }
 
-/* ---------- render ---------- */
-function render() {
-  renderMeta();
-  renderControls();
-  renderKpis();
-  renderMainChart();
-  renderCategoryDonuts();
-  renderNumericSummary();
-  renderTablePreview();
+function aggregateStacked(chart) {
+  const cats = new Map(), serSet = new Set();
+  for (const r of state.rows) {
+    const k = groupKey(r, chart.groupBy);
+    const s = chart.series ? groupKey(r, chart.series) : "All";
+    serSet.add(s);
+    if (!cats.has(k)) cats.set(k, new Map());
+    const m = cats.get(k);
+    if (!m.has(s)) m.set(s, { vals: [], count: 0 });
+    const b = m.get(s);
+    b.count++;
+    if (chart.measure) { const n = toNumber(r[chart.measure]); if (n !== null) b.vals.push(n); }
+  }
+  const seriesNames = Array.from(serSet).slice(0, 10);
+  let rows = Array.from(cats.entries()).map(function (e) {
+    const k = e[0], m = e[1];
+    const parts = seriesNames.map((s) => { const b = m.get(s); return b ? computeValue(chart.agg, b.vals, b.count) : 0; });
+    return { key: k, parts: parts, total: parts.reduce((a, b) => a + b, 0) };
+  });
+  if (colType(chart.groupBy) === "date") rows.sort((a, b) => a.key.localeCompare(b.key));
+  else rows.sort((a, b) => b.total - a.total);
+  if (chart.limit) rows = rows.slice(0, chart.limit);
+  return { seriesNames: seriesNames, rows: rows };
 }
 
-function renderMeta() {
-  document.getElementById("file-name").textContent = state.fileName || "—";
-  const titleInput = document.getElementById("board-title");
-  titleInput.value = state.boardTitle || "";
-  document.title = state.boardTitle ? `${state.boardTitle} — SEVEN Visualizer` : "SEVEN — Visualizer";
-  const sheetSel = document.getElementById("sheet-select");
-  if (state.sheetNames.length > 1) {
-    sheetSel.style.display = "";
-    sheetSel.innerHTML = state.sheetNames.map((s) => `<option ${s === state.activeSheet ? "selected" : ""}>${esc(s)}</option>`).join("");
-  } else {
-    sheetSel.style.display = "none";
+function measureLabel(chart) {
+  if (chart.agg === "count") return "Count";
+  const a = AGGS.find((x) => x.id === chart.agg);
+  return (a ? a.name : "Sum") + " of " + (chart.measure || "—");
+}
+
+/* ---------- drawing ---------- */
+function axisTicks(max) {
+  const out = [];
+  for (let i = 0; i <= 4; i++) out.push((max / 4) * i);
+  return out;
+}
+
+function svgWrap(W, H, inner) {
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" class="chart-svg">' + inner + '</svg>';
+}
+
+function drawBar(chart, W, H) {
+  const data = aggregate(chart);
+  if (!data.length) return '<div class="chart-empty">No data</div>';
+  const P = { l: 56, r: 14, t: 20, b: 54 };
+  const max = niceMax(Math.max.apply(null, data.map((d) => d.value).concat([0])));
+  const iw = W - P.l - P.r, ih = H - P.t - P.b;
+  const step = iw / data.length;
+  const bw = Math.min(step * 0.62, 56);
+
+  const grid = axisTicks(max).map(function (t) {
+    const y = P.t + ih - (t / max) * ih;
+    return '<line x1="' + P.l + '" y1="' + y + '" x2="' + (W - P.r) + '" y2="' + y + '" class="grid"/>' +
+           '<text x="' + (P.l - 8) + '" y="' + (y + 4) + '" text-anchor="end" class="axis-lbl">' + fmt(t) + '</text>';
+  }).join("");
+
+  const bars = data.map(function (d, i) {
+    const h = max ? (d.value / max) * ih : 0;
+    const x = P.l + step * i + (step - bw) / 2;
+    const y = P.t + ih - h;
+    return '<g><title>' + esc(d.key) + ': ' + fmtFull(d.value) + '</title>' +
+      '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + Math.max(h, 1) + '" rx="4" fill="' + colorFor(i) + '"/>' +
+      '<text x="' + (x + bw / 2) + '" y="' + (y - 6) + '" text-anchor="middle" class="val-lbl">' + fmt(d.value) + '</text>' +
+      '<text x="' + (x + bw / 2) + '" y="' + (H - P.b + 18) + '" text-anchor="middle" class="cat-lbl">' + esc(clip(d.key, 12)) + '</text></g>';
+  }).join("");
+
+  return svgWrap(W, H, grid + bars);
+}
+
+function drawHBar(chart, W, H) {
+  const data = aggregate(chart);
+  if (!data.length) return '<div class="chart-empty">No data</div>';
+  const P = { l: 124, r: 54, t: 12, b: 16 };
+  const max = Math.max.apply(null, data.map((d) => d.value).concat([1]));
+  const iw = W - P.l - P.r, ih = H - P.t - P.b;
+  const step = ih / data.length;
+  const bh = Math.min(step * 0.66, 26);
+
+  const bars = data.map(function (d, i) {
+    const w = (d.value / max) * iw;
+    const y = P.t + step * i + (step - bh) / 2;
+    return '<g><title>' + esc(d.key) + ': ' + fmtFull(d.value) + '</title>' +
+      '<text x="' + (P.l - 10) + '" y="' + (y + bh / 2 + 4) + '" text-anchor="end" class="cat-lbl">' + esc(clip(d.key, 18)) + '</text>' +
+      '<rect x="' + P.l + '" y="' + y + '" width="' + Math.max(w, 1) + '" height="' + bh + '" rx="4" fill="' + colorFor(i) + '"/>' +
+      '<text x="' + (P.l + w + 8) + '" y="' + (y + bh / 2 + 4) + '" class="val-lbl">' + fmt(d.value) + '</text></g>';
+  }).join("");
+  return svgWrap(W, H, bars);
+}
+
+function drawLineArea(chart, W, H, filled) {
+  const data = aggregate(chart);
+  if (data.length < 2) return '<div class="chart-empty">Needs at least 2 points — try a different Group by</div>';
+  const P = { l: 56, r: 16, t: 20, b: 46 };
+  const max = niceMax(Math.max.apply(null, data.map((d) => d.value).concat([0])));
+  const iw = W - P.l - P.r, ih = H - P.t - P.b;
+  const xAt = (i) => P.l + (iw / (data.length - 1)) * i;
+  const yAt = (v) => P.t + ih - (max ? (v / max) * ih : 0);
+
+  const grid = axisTicks(max).map(function (t) {
+    const y = yAt(t);
+    return '<line x1="' + P.l + '" y1="' + y + '" x2="' + (W - P.r) + '" y2="' + y + '" class="grid"/>' +
+           '<text x="' + (P.l - 8) + '" y="' + (y + 4) + '" text-anchor="end" class="axis-lbl">' + fmt(t) + '</text>';
+  }).join("");
+
+  const pts = data.map((d, i) => xAt(i) + "," + yAt(d.value)).join(" ");
+  const area = filled ? '<polygon points="' + P.l + ',' + (P.t + ih) + ' ' + pts + ' ' + xAt(data.length - 1) + ',' + (P.t + ih) + '" fill="' + PALETTE[0] + '" opacity="0.18"/>' : "";
+  const line = '<polyline points="' + pts + '" fill="none" stroke="' + PALETTE[0] + '" stroke-width="2.5" stroke-linejoin="round"/>';
+  const dots = data.map((d, i) => '<circle cx="' + xAt(i) + '" cy="' + yAt(d.value) + '" r="3.5" fill="' + PALETTE[0] + '"><title>' + esc(d.key) + ': ' + fmtFull(d.value) + '</title></circle>').join("");
+
+  const every = Math.ceil(data.length / 8);
+  const xl = data.map((d, i) => i % every === 0
+    ? '<text x="' + xAt(i) + '" y="' + (H - P.b + 20) + '" text-anchor="middle" class="cat-lbl">' + esc(clip(d.key, 10)) + '</text>' : "").join("");
+
+  return svgWrap(W, H, grid + area + line + dots + xl);
+}
+
+function polar(cx, cy, r, a) { const rad = (a - 90) * Math.PI / 180; return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)]; }
+function arcPath(cx, cy, rO, rI, a0, a1) {
+  const large = (a1 - a0) > 180 ? 1 : 0;
+  const p0 = polar(cx, cy, rO, a0), p1 = polar(cx, cy, rO, a1);
+  if (rI <= 0) return 'M ' + cx + ' ' + cy + ' L ' + p0[0] + ' ' + p0[1] + ' A ' + rO + ' ' + rO + ' 0 ' + large + ' 1 ' + p1[0] + ' ' + p1[1] + ' Z';
+  const p2 = polar(cx, cy, rI, a1), p3 = polar(cx, cy, rI, a0);
+  return 'M ' + p0[0] + ' ' + p0[1] + ' A ' + rO + ' ' + rO + ' 0 ' + large + ' 1 ' + p1[0] + ' ' + p1[1] +
+         ' L ' + p2[0] + ' ' + p2[1] + ' A ' + rI + ' ' + rI + ' 0 ' + large + ' 0 ' + p3[0] + ' ' + p3[1] + ' Z';
+}
+
+function drawPieDonut(chart, W, H, isDonut) {
+  const data = aggregate(chart);
+  if (!data.length) return '<div class="chart-empty">No data</div>';
+  const total = data.reduce((a, b) => a + b.value, 0) || 1;
+  const rO = Math.min(H / 2 - 14, 92), rI = isDonut ? rO * 0.6 : 0;
+  const cx = rO + 24, cy = H / 2;
+  let acc = 0;
+  const slices = data.map(function (d, i) {
+    const a0 = (acc / total) * 360; acc += d.value;
+    const a1 = (acc / total) * 360;
+    return '<path d="' + arcPath(cx, cy, rO, rI, a0, Math.max(a1, a0 + 0.01)) + '" fill="' + colorFor(i) +
+      '" stroke="var(--bg-panel)" stroke-width="1.5"><title>' + esc(d.key) + ': ' + fmtFull(d.value) + ' (' + Math.round(d.value / total * 100) + '%)</title></path>';
+  }).join("");
+  const center = isDonut
+    ? '<text x="' + cx + '" y="' + (cy - 2) + '" text-anchor="middle" class="donut-num">' + fmt(total) + '</text>' +
+      '<text x="' + cx + '" y="' + (cy + 16) + '" text-anchor="middle" class="donut-cap">TOTAL</text>' : "";
+  const lx = cx + rO + 24;
+  const legend = data.slice(0, 9).map(function (d, i) {
+    const y = 26 + i * 21;
+    return '<g><rect x="' + lx + '" y="' + (y - 9) + '" width="11" height="11" rx="3" fill="' + colorFor(i) + '"/>' +
+      '<text x="' + (lx + 18) + '" y="' + y + '" class="cat-lbl">' + esc(clip(d.key, 16)) + '</text>' +
+      '<text x="' + (W - 12) + '" y="' + y + '" text-anchor="end" class="val-lbl">' + fmt(d.value) + '</text></g>';
+  }).join("");
+  return svgWrap(W, H, slices + center + legend);
+}
+
+function drawStacked(chart, W, H) {
+  if (!chart.series) return '<div class="chart-empty">Choose a “Split by” column in Edit</div>';
+  const res = aggregateStacked(chart);
+  if (!res.rows.length) return '<div class="chart-empty">No data</div>';
+  const P = { l: 56, r: 14, t: 20, b: 72 };
+  const max = niceMax(Math.max.apply(null, res.rows.map((r) => r.total).concat([0])));
+  const iw = W - P.l - P.r, ih = H - P.t - P.b;
+  const step = iw / res.rows.length, bw = Math.min(step * 0.62, 54);
+
+  const grid = axisTicks(max).map(function (t) {
+    const y = P.t + ih - (t / max) * ih;
+    return '<line x1="' + P.l + '" y1="' + y + '" x2="' + (W - P.r) + '" y2="' + y + '" class="grid"/>' +
+           '<text x="' + (P.l - 8) + '" y="' + (y + 4) + '" text-anchor="end" class="axis-lbl">' + fmt(t) + '</text>';
+  }).join("");
+
+  const bars = res.rows.map(function (r, i) {
+    const x = P.l + step * i + (step - bw) / 2;
+    let yCur = P.t + ih;
+    const segs = r.parts.map(function (v, si) {
+      const h = max ? (v / max) * ih : 0;
+      yCur -= h;
+      return h > 0.5 ? '<rect x="' + x + '" y="' + yCur + '" width="' + bw + '" height="' + h + '" fill="' + colorFor(si) +
+        '"><title>' + esc(r.key) + ' · ' + esc(res.seriesNames[si]) + ': ' + fmtFull(v) + '</title></rect>' : "";
+    }).join("");
+    return segs + '<text x="' + (x + bw / 2) + '" y="' + (H - P.b + 18) + '" text-anchor="middle" class="cat-lbl">' + esc(clip(r.key, 11)) + '</text>';
+  }).join("");
+
+  const legend = res.seriesNames.slice(0, 6).map(function (s, i) {
+    const lx = P.l + (i % 3) * ((W - P.l) / 3), ly = H - 28 + Math.floor(i / 3) * 16;
+    return '<g><rect x="' + lx + '" y="' + (ly - 8) + '" width="10" height="10" rx="2.5" fill="' + colorFor(i) + '"/>' +
+      '<text x="' + (lx + 15) + '" y="' + ly + '" class="cat-lbl">' + esc(clip(s, 14)) + '</text></g>';
+  }).join("");
+
+  return svgWrap(W, H, grid + bars + legend);
+}
+
+function drawProgress(chart) {
+  const data = aggregate(chart);
+  if (!data.length) return '<div class="chart-empty">No data</div>';
+  const max = Math.max.apply(null, data.map((d) => d.value).concat([1]));
+  return '<div class="prog-list">' + data.map(function (d, i) {
+    const p = (d.value / max) * 100;
+    return '<div class="prog-row"><div class="prog-top"><span class="prog-name">' + esc(d.key) + '</span>' +
+      '<span class="prog-val mono">' + fmtFull(d.value) + '</span></div>' +
+      '<div class="prog-track"><div class="prog-fill" style="width:' + p + '%; background:' + colorFor(i) + '"></div></div></div>';
+  }).join("") + '</div>';
+}
+
+function drawTable(chart) {
+  const data = aggregate(chart);
+  if (!data.length) return '<div class="chart-empty">No data</div>';
+  const total = data.reduce((a, b) => a + b.value, 0) || 1;
+  return '<div class="tbl-scroll"><table class="v-table"><thead><tr><th>' + esc(chart.groupBy || "Group") +
+    '</th><th>' + esc(measureLabel(chart)) + '</th><th>Share</th></tr></thead><tbody>' +
+    data.map((d) => '<tr><td>' + esc(d.key) + '</td><td class="mono">' + fmtFull(d.value) +
+      '</td><td class="mono dimmed">' + Math.round(d.value / total * 100) + '%</td></tr>').join("") +
+    '</tbody></table></div>';
+}
+
+function drawKpi(chart) {
+  const vals = [];
+  let count = 0;
+  for (const r of state.rows) {
+    count++;
+    if (chart.measure) { const n = toNumber(r[chart.measure]); if (n !== null) vals.push(n); }
   }
+  const v = computeValue(chart.agg, vals, count);
+  return '<div class="kpi-body"><div class="kpi-num mono">' + fmt(v) + '</div><div class="kpi-cap">' + esc(measureLabel(chart)) + '</div></div>';
+}
+
+function drawChart(chart) {
+  const W = chart.width === "full" ? 900 : 440;
+  const H = 300;
+  switch (chart.type) {
+    case "kpi": return drawKpi(chart);
+    case "bar": return drawBar(chart, W, H);
+    case "hbar": return drawHBar(chart, W, H);
+    case "line": return drawLineArea(chart, W, H, false);
+    case "area": return drawLineArea(chart, W, H, true);
+    case "donut": return drawPieDonut(chart, W, H, true);
+    case "pie": return drawPieDonut(chart, W, H, false);
+    case "stacked": return drawStacked(chart, W, H);
+    case "progress": return drawProgress(chart);
+    case "table": return drawTable(chart);
+    default: return '<div class="chart-empty">Unknown chart type</div>';
+  }
+}
+
+/* ---------- board rendering ---------- */
+function renderAll() {
   document.getElementById("empty-state").style.display = "none";
   document.getElementById("board").style.display = "";
+  document.getElementById("file-name").textContent = state.fileName || "—";
+  const ti = document.getElementById("board-title");
+  ti.value = state.boardTitle || "";
+  document.title = state.boardTitle ? state.boardTitle + " — SEVEN Visualizer" : "SEVEN — Visualizer";
+
+  const sheetSel = document.getElementById("sheet-select");
+  const wrap = document.getElementById("sheet-wrap");
+  if (state.sheetNames.length > 1) {
+    wrap.style.display = "";
+    sheetSel.innerHTML = state.sheetNames.map((s) => '<option ' + (s === state.activeSheet ? "selected" : "") + '>' + esc(s) + '</option>').join("");
+  } else wrap.style.display = "none";
+
+  renderCharts();
 }
 
-function renderControls() {
-  const textCols = state.columns.filter((c) => c.type === "text" || c.type === "date");
-  const numCols = state.columns.filter((c) => c.type === "number");
-  const gSel = document.getElementById("group-select");
-  gSel.innerHTML = textCols.map((c) => `<option ${c.name === state.groupBy ? "selected" : ""}>${esc(c.name)}</option>`).join("");
-  const mSel = document.getElementById("measure-select");
-  mSel.innerHTML = `<option value="__count__" ${state.measure === "__count__" ? "selected" : ""}>Count of rows</option>` +
-    numCols.map((c) => `<option value="${esc(c.name)}" ${c.name === state.measure ? "selected" : ""}>Sum of ${esc(c.name)}</option>`).join("");
-}
+function renderCharts() {
+  const grid = document.getElementById("chart-grid");
+  if (!state.charts.length) {
+    grid.innerHTML = '<div class="no-charts">No charts yet — click <b>+ Add chart</b> to start building.</div>';
+    saveLayout();
+    return;
+  }
+  grid.innerHTML = state.charts.map(function (c, i) {
+    return '<section class="chart-card w-' + (c.width || "half") + '" data-id="' + c.id + '">' +
+      '<header class="chart-head"><h3 class="chart-title display">' + esc(c.title || "Untitled") + '</h3>' +
+      '<div class="chart-tools">' +
+        '<button class="tool" data-act="left" data-id="' + c.id + '" title="Move left"' + (i === 0 ? " disabled" : "") + '>◀</button>' +
+        '<button class="tool" data-act="right" data-id="' + c.id + '" title="Move right"' + (i === state.charts.length - 1 ? " disabled" : "") + '>▶</button>' +
+        '<button class="tool" data-act="dup" data-id="' + c.id + '" title="Duplicate">⧉</button>' +
+        '<button class="tool" data-act="edit" data-id="' + c.id + '" title="Edit">✎</button>' +
+        '<button class="tool danger" data-act="del" data-id="' + c.id + '" title="Remove">✕</button>' +
+      '</div></header>' +
+      '<div class="chart-body">' + drawChart(c) + '</div></section>';
+  }).join("");
 
-function renderKpis() {
-  const numCols = state.columns.filter((c) => c.type === "number");
-  const cards = [{ label: "Total rows", value: state.rows.length, accent: "var(--teal)" }];
-  numCols.slice(0, 5).forEach((c, i) => {
-    const sum = c.numericValues.reduce((a, b) => a + (b || 0), 0);
-    cards.push({ label: `Total ${c.name}`, value: sum, accent: colorFor(i + 1) });
+  Array.prototype.forEach.call(grid.querySelectorAll("button.tool"), function (b) {
+    b.addEventListener("click", function () { chartAction(b.getAttribute("data-act"), b.getAttribute("data-id")); });
   });
-  document.getElementById("kpi-grid").innerHTML = cards.map((c) => `
-    <div class="kpi-card" style="--accent:${c.accent}">
-      <div class="label">${esc(c.label)}</div>
-      <div class="value mono">${fmt(c.value)}</div>
-    </div>`).join("");
+  saveLayout();
 }
 
-function renderMainChart() {
-  const data = aggregate(state.groupBy, state.measure);
-  const title = state.measure === "__count__"
-    ? `Rows per ${state.groupBy}`
-    : `${state.measure} per ${state.groupBy}`;
-  document.getElementById("main-chart-title").textContent = title;
-
-  const top = data.slice(0, 14);
-  const max = Math.max(...top.map((d) => d.value), 1);
-  document.getElementById("main-chart").innerHTML = top.map((d, i) => {
-    const h = Math.max((d.value / max) * 200, 3);
-    return `<div class="v-bar-col" title="${esc(d.key)}: ${fmt(d.value)}">
-      <div class="v-bar-val mono">${fmt(d.value)}</div>
-      <div class="v-bar" style="height:${h}px; background:${colorFor(i)};"></div>
-      <div class="v-bar-label">${esc(d.key)}</div>
-    </div>`;
-  }).join("");
+function chartAction(act, id) {
+  const i = state.charts.findIndex((c) => c.id === id);
+  if (i < 0) return;
+  if (act === "del") {
+    if (!confirm("Remove this chart?")) return;
+    state.charts.splice(i, 1);
+  } else if (act === "dup") {
+    const copy = JSON.parse(JSON.stringify(state.charts[i]));
+    copy.id = uid(); copy.title = copy.title + " (copy)";
+    state.charts.splice(i + 1, 0, copy);
+  } else if (act === "left" && i > 0) {
+    const t = state.charts[i - 1]; state.charts[i - 1] = state.charts[i]; state.charts[i] = t;
+  } else if (act === "right" && i < state.charts.length - 1) {
+    const t = state.charts[i + 1]; state.charts[i + 1] = state.charts[i]; state.charts[i] = t;
+  } else if (act === "edit") {
+    return openEditor(id);
+  }
+  renderCharts();
 }
 
-function renderCategoryDonuts() {
-  // For up to 3 text columns with a small number of categories, draw a donut.
-  const cats = state.columns
-    .filter((c) => c.type === "text")
-    .map((c) => ({ c, distinct: new Set(c.values.map((v) => String(v))).size }))
-    .filter((x) => x.distinct >= 2 && x.distinct <= 8)
-    .sort((a, b) => a.distinct - b.distinct)
-    .slice(0, 3);
+/* ---------- editor ---------- */
+function openEditor(id) {
+  state.editingId = id;
+  const firstText = state.columns.find((x) => x.type === "text");
+  const c = id ? state.charts.find((x) => x.id === id) : {
+    type: "bar", title: "", agg: "count", measure: null,
+    groupBy: firstText ? firstText.name : null, series: null, width: "half", limit: 12, sort: "desc",
+  };
+  const catCols = state.columns.filter((x) => x.type === "text" || x.type === "date");
+  const numCols = state.columns.filter((x) => x.type === "number");
+  const sel = (a, b) => (a === b ? " selected" : "");
 
-  const wrap = document.getElementById("donut-row");
-  if (!cats.length) { wrap.innerHTML = ""; wrap.style.display = "none"; return; }
-  wrap.style.display = "";
+  document.getElementById("editor-heading").textContent = id ? "Edit chart" : "Add chart";
+  document.getElementById("editor-form").innerHTML =
+    '<label class="fld"><span>Chart type</span><select id="f-type">' +
+      CHART_TYPES.map((t) => '<option value="' + t.id + '"' + sel(t.id, c.type) + '>' + t.name + '</option>').join("") + '</select></label>' +
+    '<label class="fld"><span>Title</span><input id="f-title" value="' + esc(c.title || "") + '" placeholder="Leave blank to auto-name" /></label>' +
+    '<label class="fld"><span>Group by (category)</span><select id="f-group"><option value="">— none —</option>' +
+      catCols.map((x) => '<option' + sel(x.name, c.groupBy) + '>' + esc(x.name) + '</option>').join("") + '</select></label>' +
+    '<label class="fld"><span>Split by <em>(stacked bar only)</em></span><select id="f-series"><option value="">— none —</option>' +
+      catCols.map((x) => '<option' + sel(x.name, c.series) + '>' + esc(x.name) + '</option>').join("") + '</select></label>' +
+    '<label class="fld"><span>Measure</span><select id="f-agg">' +
+      AGGS.map((a) => '<option value="' + a.id + '"' + sel(a.id, c.agg) + '>' + a.name + '</option>').join("") + '</select></label>' +
+    '<label class="fld"><span>Of column</span><select id="f-measure"><option value="">— none —</option>' +
+      numCols.map((x) => '<option' + sel(x.name, c.measure) + '>' + esc(x.name) + '</option>').join("") + '</select></label>' +
+    '<label class="fld"><span>Size</span><select id="f-width">' +
+      '<option value="quarter"' + sel("quarter", c.width) + '>Small — quarter width</option>' +
+      '<option value="half"' + sel("half", c.width) + '>Medium — half width</option>' +
+      '<option value="full"' + sel("full", c.width) + '>Large — full width</option></select></label>' +
+    '<label class="fld"><span>Show top</span><input id="f-limit" type="number" min="1" max="50" value="' + (c.limit || 12) + '" /></label>' +
+    '<label class="fld"><span>Sort</span><select id="f-sort">' +
+      '<option value="desc"' + sel("desc", c.sort) + '>Highest first</option>' +
+      '<option value="asc"' + sel("asc", c.sort) + '>Lowest first</option>' +
+      '<option value="label"' + sel("label", c.sort) + '>By name (A–Z)</option>' +
+      '<option value="date"' + sel("date", c.sort) + '>By date / time</option></select></label>';
 
-  wrap.innerHTML = cats.map(({ c }) => {
-    const data = aggregate(c.name, "__count__");
-    const total = data.reduce((a, b) => a + b.value, 0);
-    let acc = 0;
-    const R = 52, C = 2 * Math.PI * R;
-    const segs = data.map((d, i) => {
-      const frac = d.value / total;
-      const dash = `${frac * C} ${C}`;
-      const off = -acc * C;
-      acc += frac;
-      return `<circle cx="70" cy="70" r="${R}" fill="none" stroke="${colorFor(i)}" stroke-width="16" stroke-dasharray="${dash}" stroke-dashoffset="${off}" transform="rotate(-90 70 70)"></circle>`;
-    }).join("");
-    const legend = data.slice(0, 8).map((d, i) =>
-      `<div class="v-leg"><span class="v-sw" style="background:${colorFor(i)}"></span>${esc(d.key)} <span class="mono v-leg-n">${fmt(d.value)}</span></div>`
-    ).join("");
-    return `<div class="panel v-donut-panel">
-      <h3 class="display v-sub">${esc(c.name)}</h3>
-      <div class="v-donut-body">
-        <svg viewBox="0 0 140 140" width="140" height="140">${segs}
-          <text x="70" y="66" text-anchor="middle" class="v-donut-num mono">${fmt(total)}</text>
-          <text x="70" y="84" text-anchor="middle" class="v-donut-cap">total</text>
-        </svg>
-        <div class="v-legend">${legend}</div>
-      </div>
-    </div>`;
-  }).join("");
+  document.getElementById("editor-modal").classList.add("open");
 }
 
-function renderNumericSummary() {
-  const numCols = state.columns.filter((c) => c.type === "number");
-  const panel = document.getElementById("numeric-summary");
-  if (!numCols.length) { panel.closest(".panel").style.display = "none"; return; }
-  panel.closest(".panel").style.display = "";
-  panel.innerHTML = `<table class="v-table">
-    <thead><tr><th>Column</th><th>Sum</th><th>Average</th><th>Min</th><th>Max</th></tr></thead>
-    <tbody>${numCols.map((c) => {
-      const vals = c.numericValues.filter((v) => v !== null);
-      const sum = vals.reduce((a, b) => a + b, 0);
-      const avg = vals.length ? sum / vals.length : 0;
-      return `<tr><td class="v-td-name">${esc(c.name)}</td><td class="mono">${fmt(sum)}</td><td class="mono">${fmt(avg)}</td><td class="mono">${fmt(Math.min(...vals))}</td><td class="mono">${fmt(Math.max(...vals))}</td></tr>`;
-    }).join("")}</tbody></table>`;
+function saveEditor() {
+  const g = (id) => document.getElementById(id).value;
+  const chart = {
+    id: state.editingId || uid(),
+    type: g("f-type"),
+    title: g("f-title").trim(),
+    groupBy: g("f-group") || null,
+    series: g("f-series") || null,
+    agg: g("f-agg"),
+    measure: g("f-measure") || null,
+    width: g("f-width"),
+    limit: Math.max(1, parseInt(g("f-limit"), 10) || 12),
+    sort: g("f-sort"),
+  };
+  if (chart.agg !== "count" && !chart.measure) {
+    alert('Choose a column under "Of column", or set Measure to "Count of rows".');
+    return;
+  }
+  if (chart.type !== "kpi" && !chart.groupBy) {
+    alert('Choose a column under "Group by" for this chart type.');
+    return;
+  }
+  if (!chart.title) {
+    chart.title = chart.type === "kpi" ? measureLabel(chart)
+      : (chart.agg === "count" ? "Count" : (chart.measure || "Value")) + " by " + chart.groupBy;
+  }
+  const i = state.charts.findIndex((c) => c.id === state.editingId);
+  if (i >= 0) state.charts[i] = chart; else state.charts.push(chart);
+  closeEditor();
+  renderCharts();
 }
 
-function renderTablePreview() {
-  const cols = state.columns.slice(0, 8);
-  const rows = state.rows.slice(0, 12);
-  document.getElementById("table-preview").innerHTML = `<table class="v-table">
-    <thead><tr>${cols.map((c) => `<th>${esc(c.name)}</th>`).join("")}</tr></thead>
-    <tbody>${rows.map((r) => `<tr>${cols.map((c) => `<td>${esc(r[c.name] ?? "")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
-  document.getElementById("table-caption").textContent = `Showing ${rows.length} of ${state.rows.length} rows · ${state.columns.length} columns`;
+function closeEditor() {
+  state.editingId = null;
+  document.getElementById("editor-modal").classList.remove("open");
+}
+
+/* ---------- persistence ---------- */
+const STORE = "seven-visualizer-layouts";
+const layoutKey = () => state.fileName + "::" + state.activeSheet;
+function allLayouts() { try { return JSON.parse(localStorage.getItem(STORE) || "{}"); } catch (e) { return {}; } }
+function saveLayout() {
+  try {
+    const all = allLayouts();
+    all[layoutKey()] = { title: state.boardTitle, charts: state.charts };
+    localStorage.setItem(STORE, JSON.stringify(all));
+  } catch (e) { /* storage unavailable */ }
+}
+function loadLayout() { return allLayouts()[layoutKey()] || null; }
+
+function prettifyFileName(name) {
+  return name.replace(/\.(xlsx|xls|csv)$/i, "").replace(/\s*\(\d+\)\s*$/, "")
+    .replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 /* ---------- file intake ---------- */
 function handleFile(file) {
   state.fileName = file.name;
-  state.boardTitle = savedTitleFor(file.name) || prettifyFileName(file.name);
+  state.boardTitle = prettifyFileName(file.name);
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = function (e) {
     try {
-      const data = new Uint8Array(e.target.result);
-      const wb = XLSX.read(data, { type: "array", cellDates: false });
-      loadWorkbook(wb);
+      loadWorkbook(XLSX.read(new Uint8Array(e.target.result), { type: "array", cellDates: false }));
     } catch (err) {
       alert("Sorry — I couldn't read that file. Make sure it's a valid .xlsx, .xls, or .csv.\n\n" + err.message);
     }
@@ -333,17 +675,28 @@ function initVisualizer() {
   ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("drag"); }));
   drop.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) handleFile(f); });
 
-  document.getElementById("group-select").addEventListener("change", (e) => { state.groupBy = e.target.value; renderMainChart(); });
-  document.getElementById("measure-select").addEventListener("change", (e) => { state.measure = e.target.value; renderMainChart(); renderKpis(); });
-  document.getElementById("sheet-select").addEventListener("change", (e) => selectSheet(e.target.value));
+  document.getElementById("sheet-select").addEventListener("change", (e) => selectSheet(e.target.value, true));
+  document.getElementById("add-chart-btn").addEventListener("click", () => openEditor(null));
+  document.getElementById("reset-btn").addEventListener("click", function () {
+    if (!confirm("Rebuild the automatic dashboard? Your custom charts will be replaced.")) return;
+    state.charts = autoCharts();
+    renderCharts();
+  });
+  document.getElementById("print-btn").addEventListener("click", () => window.print());
+
+  document.getElementById("editor-save").addEventListener("click", saveEditor);
+  document.getElementById("editor-cancel").addEventListener("click", closeEditor);
+  document.getElementById("editor-modal").addEventListener("click", function (e) {
+    if (e.target.id === "editor-modal") closeEditor();
+  });
 
   const titleInput = document.getElementById("board-title");
-  titleInput.addEventListener("input", (e) => {
+  titleInput.addEventListener("input", function (e) {
     state.boardTitle = e.target.value;
-    document.title = state.boardTitle ? `${state.boardTitle} — SEVEN Visualizer` : "SEVEN — Visualizer";
+    document.title = state.boardTitle ? state.boardTitle + " — SEVEN Visualizer" : "SEVEN — Visualizer";
   });
-  titleInput.addEventListener("blur", () => saveTitleFor(state.fileName, state.boardTitle));
-  titleInput.addEventListener("keydown", (e) => { if (e.key === "Enter") titleInput.blur(); });
+  titleInput.addEventListener("blur", saveLayout);
+  titleInput.addEventListener("keydown", function (e) { if (e.key === "Enter") titleInput.blur(); });
 }
 
 document.addEventListener("DOMContentLoaded", initVisualizer);
