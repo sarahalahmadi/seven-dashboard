@@ -85,6 +85,55 @@ function daysBetween(from, to) {
   return Math.round((b - a) / 86400000);
 }
 
+/* Turns text like "Daily-Weekly-Monthly-Annual" into a day count, using
+   the LONGEST cycle mentioned (that's the one worth a countdown — daily
+   or weekly upkeep isn't a "deadline" the way an annual recert is).
+   Typo-tolerant ("Quartely") since real-world sheets aren't always clean. */
+function frequencyToDays(text) {
+  if (!text) return null;
+  const s = String(text).toLowerCase();
+  if (/annual|yearly/.test(s)) return 365;
+  if (/semi[\s-]?annual|bi[\s-]?annual/.test(s)) return 182;
+  if (/quart/.test(s)) return 90;
+  if (/month/.test(s)) return 30;
+  if (/week/.test(s)) return 7;
+  if (/daily|\bday\b/.test(s)) return 1;
+  return null;
+}
+
+function isTruthyFlag(v) {
+  return /^(yes|y|true|1)$/i.test(String(v === null || v === undefined ? "" : v).trim());
+}
+
+/* When a file has no real due-date column but does have a maintenance or
+   certification FREQUENCY column ("Daily-Weekly-Monthly-Annual"), build
+   a rough estimated due date from it, so the countdown has something to
+   show. This is a guess, not a confirmed date — the column is named and
+   labelled "(Estimated)" everywhere it appears so nobody mistakes it for
+   verified compliance data. Skipped entirely if a real deadline column
+   already exists. */
+function estimateDueDatesFromFrequency(rows) {
+  if (!rows.length) return;
+  const keys = Object.keys(rows[0]);
+  const deadlineNameRe = /due|expiry|expire|renew|recert|deadline|next[\s_-]*(date|maintenance|service)|inspection|audit|valid[\s_-]*(until|to)/i;
+  const hasRealDeadline = keys.some((k) => deadlineNameRe.test(k) && rows.some((r) => parseAnyDate(r[k]) !== null));
+  if (hasRealDeadline) return;
+
+  const freqKey = keys.find((k) => /frequen|interval|cycle|schedule/i.test(k) && rows.some((r) => frequencyToDays(r[k]) !== null));
+  if (!freqKey) return;
+
+  const flagKey = keys.find((k) => /recert|renew|due|overdue/i.test(k));
+  const today = new Date();
+  const colName = "Due Date (Estimated)";
+  rows.forEach(function (r) {
+    const days = frequencyToDays(r[freqKey]);
+    if (days === null) { r[colName] = ""; return; }
+    const overdue = flagKey && isTruthyFlag(r[flagKey]);
+    const dt = overdue ? new Date(today.getTime() - 86400000) : new Date(today.getTime() + days * 86400000);
+    r[colName] = dt.toISOString().slice(0, 10);
+  });
+}
+
 /* One entry per row that has a usable date in `dateCol`, sorted soonest
    first (overdue items sort first of all, most-overdue at the very top). */
 function computeDeadlines(chart) {
@@ -199,8 +248,9 @@ function autoCharts() {
       agg: primaryMeasure ? "sum" : "count", measure: primaryMeasure, groupBy: secondGroup.name, width: "half", limit: 10, sort: "desc",
     });
   }
-  if (dateCols.length && primaryMeasure) {
-    charts.push({ id: uid(), type: "area", title: primaryMeasure + " over time", agg: "sum", measure: primaryMeasure, groupBy: dateCols[0].name, width: "full", limit: 24, sort: "date" });
+  const realDateCols = dateCols.filter((c) => !/estimated/i.test(c.name));
+  if (realDateCols.length && primaryMeasure) {
+    charts.push({ id: uid(), type: "area", title: primaryMeasure + " over time", agg: "sum", measure: primaryMeasure, groupBy: realDateCols[0].name, width: "full", limit: 24, sort: "date" });
   }
   if (mainGroup) {
     charts.push({ id: uid(), type: "table", title: "Summary table", agg: primaryMeasure ? "sum" : "count", measure: primaryMeasure, groupBy: mainGroup, width: "full", limit: 12, sort: "desc" });
@@ -749,6 +799,7 @@ function cleanRow(row) {
 function ingestRows(rows, opts) {
   opts = opts || {};
   state.rows = (rows || []).map(cleanRow);
+  estimateDueDatesFromFrequency(state.rows);
 
   const headers = [];
   state.rows.forEach(function (r) {
