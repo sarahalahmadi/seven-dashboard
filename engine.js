@@ -10,16 +10,18 @@ const PALETTE = ["#0CAFBF", "#F19A27", "#E01A4F", "#1560A8", "#17B978", "#9B5DE5
 const colorFor = (i) => PALETTE[i % PALETTE.length];
 
 const CHART_TYPES = [
-  { id: "kpi",      name: "KPI number" },
-  { id: "bar",      name: "Bar (vertical)" },
-  { id: "hbar",     name: "Bar (horizontal)" },
-  { id: "stacked",  name: "Stacked bar" },
-  { id: "line",     name: "Line" },
-  { id: "area",     name: "Area" },
-  { id: "donut",    name: "Donut" },
-  { id: "pie",      name: "Pie" },
-  { id: "progress", name: "Progress bars" },
-  { id: "table",    name: "Table" },
+  { id: "kpi",       name: "KPI number" },
+  { id: "countdown", name: "Countdown (nearest date)" },
+  { id: "deadlines", name: "Deadlines list" },
+  { id: "bar",       name: "Bar (vertical)" },
+  { id: "hbar",      name: "Bar (horizontal)" },
+  { id: "stacked",   name: "Stacked bar" },
+  { id: "line",      name: "Line" },
+  { id: "area",      name: "Area" },
+  { id: "donut",     name: "Donut" },
+  { id: "pie",       name: "Pie" },
+  { id: "progress",  name: "Progress bars" },
+  { id: "table",     name: "Table" },
 ];
 
 const AGGS = [
@@ -64,6 +66,43 @@ function niceMax(v) {
 
 function excelSerialToDate(n) { return new Date(Date.UTC(1899, 11, 30) + n * 86400000); }
 
+/* Accepts an Excel serial number, an ISO string (from a JSON snapshot),
+   or any string the browser's date parser understands. Returns null if
+   it can't make sense of the value, rather than a garbage date. */
+function parseAnyDate(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v === "number") {
+    if (v > 20000 && v < 80000) return excelSerialToDate(v);
+    return null;
+  }
+  const t = Date.parse(String(v));
+  return isNaN(t) ? null : new Date(t);
+}
+
+function daysBetween(from, to) {
+  const a = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const b = new Date(to.getFullYear(), to.getMonth(), to.getDate());
+  return Math.round((b - a) / 86400000);
+}
+
+/* One entry per row that has a usable date in `dateCol`, sorted soonest
+   first (overdue items sort first of all, most-overdue at the very top). */
+function computeDeadlines(chart) {
+  const dateCol = chart.series;
+  const labelCol = chart.groupBy;
+  if (!dateCol) return [];
+  const today = new Date();
+  const items = [];
+  state.rows.forEach(function (r) {
+    const d = parseAnyDate(r[dateCol]);
+    if (!d) return;
+    const label = labelCol ? String(r[labelCol] || "(blank)") : "Item";
+    items.push({ label: label, date: d, days: daysBetween(today, d) });
+  });
+  items.sort(function (a, b) { return a.days - b.days; });
+  return items;
+}
+
 function toNumber(v) {
   if (typeof v === "number") return isFinite(v) ? v : null;
   if (v === null || v === undefined || v === "") return null;
@@ -74,7 +113,7 @@ function toNumber(v) {
 /* ---------- column typing ---------- */
 function detectType(values, header) {
   let nums = 0, dates = 0, nonEmpty = 0;
-  const looksDatey = header && /date|day|start|end|deadline|due|opening|month|year/i.test(header);
+  const looksDatey = header && /date|day|start|end|deadline|due|opening|month|year|expiry|expire|renew|recert|valid|inspection|audit|issued/i.test(header);
   for (const v of values) {
     if (v === null || v === undefined || v === "") continue;
     nonEmpty++;
@@ -166,6 +205,15 @@ function autoCharts() {
   if (mainGroup) {
     charts.push({ id: uid(), type: "table", title: "Summary table", agg: primaryMeasure ? "sum" : "count", measure: primaryMeasure, groupBy: mainGroup, width: "full", limit: 12, sort: "desc" });
   }
+
+  // A date column that reads as a deadline (due, expiry, recert, next
+  // service, inspection...) gets a countdown up top and a full list.
+  const deadlineCol = dateCols.find((c) => /due|expiry|expire|renew|recert|deadline|next[\s_-]*(date|maintenance|service)|inspection|audit|valid[\s_-]*(until|to)/i.test(c.name));
+  if (deadlineCol) {
+    charts.unshift({ id: uid(), type: "countdown", title: "Next " + deadlineCol.name, groupBy: labelCol, series: deadlineCol.name, agg: "count", measure: null, width: "quarter" });
+    charts.push({ id: uid(), type: "deadlines", title: "Upcoming: " + deadlineCol.name, groupBy: labelCol, series: deadlineCol.name, agg: "count", measure: null, width: "half", limit: 10, sort: "desc" });
+  }
+
   return charts;
 }
 
@@ -440,11 +488,42 @@ function drawKpi(chart) {
   return '<div class="kpi-body"><div class="kpi-num mono">' + fmt(v) + '</div><div class="kpi-cap">' + esc(measureLabel(chart)) + '</div></div>';
 }
 
+function drawCountdown(chart) {
+  const items = computeDeadlines(chart);
+  if (!items.length) return '<div class="chart-empty">No dates found. Pick a date column under "Date column" in Edit.</div>';
+  const next = items[0];
+  const overdue = next.days < 0;
+  const dueSoon = !overdue && next.days <= 30;
+  const color = overdue ? "var(--magenta)" : dueSoon ? "var(--orange)" : "var(--green)";
+  const text = overdue ? Math.abs(next.days) + (Math.abs(next.days) === 1 ? " day overdue" : " days overdue")
+    : next.days + (next.days === 1 ? " day" : " days");
+  return '<div class="kpi-body"><div class="kpi-num mono" style="color:' + color + ';">' + text + '</div>' +
+    '<div class="kpi-cap">' + esc(next.label) + '</div></div>';
+}
+
+function drawDeadlines(chart) {
+  const all = computeDeadlines(chart);
+  if (!all.length) return '<div class="chart-empty">No dates found. Pick a date column under "Date column" in Edit.</div>';
+  const items = chart.limit ? all.slice(0, chart.limit) : all;
+  return '<div class="prog-list">' + items.map(function (it) {
+    const overdue = it.days < 0;
+    const dueSoon = !overdue && it.days <= 30;
+    const color = overdue ? "var(--magenta)" : dueSoon ? "var(--orange)" : "var(--green)";
+    const text = overdue ? Math.abs(it.days) + " days overdue" : it.days + " days left";
+    const pct = overdue ? 100 : Math.max(6, 100 - Math.min(it.days, 365) / 365 * 100);
+    return '<div class="prog-row"><div class="prog-top"><span class="prog-name">' + esc(it.label) +
+      '</span><span class="prog-val mono" style="color:' + color + ';">' + text + '</span></div>' +
+      '<div class="prog-track"><div class="prog-fill" style="width:' + pct + '%; background:' + color + ';"></div></div></div>';
+  }).join("") + '</div>';
+}
+
 function drawChart(chart) {
   const W = chart.width === "full" ? 900 : 440;
   const H = 300;
   switch (chart.type) {
     case "kpi": return drawKpi(chart);
+    case "countdown": return drawCountdown(chart);
+    case "deadlines": return drawDeadlines(chart);
     case "bar": return drawBar(chart, W, H);
     case "hbar": return drawHBar(chart, W, H);
     case "line": return drawLineArea(chart, W, H, false);
@@ -552,7 +631,7 @@ function openEditor(id) {
     '<label class="fld"><span>Title</span><input id="f-title" value="' + esc(c.title || "") + '" placeholder="Leave blank to auto-name" /></label>' +
     '<label class="fld"><span>Group by (category)</span><select id="f-group"><option value="">— none —</option>' +
       catCols.map((x) => '<option' + sel(x.name, c.groupBy) + '>' + esc(x.name) + '</option>').join("") + '</select></label>' +
-    '<label class="fld"><span>Split by <em>(stacked bar only)</em></span><select id="f-series"><option value="">— none —</option>' +
+    '<label class="fld"><span>Split by <em>(stacked bar)</em> or Date column <em>(countdown, deadlines)</em></span><select id="f-series"><option value="">— none —</option>' +
       catCols.map((x) => '<option' + sel(x.name, c.series) + '>' + esc(x.name) + '</option>').join("") + '</select></label>' +
     '<label class="fld"><span>Measure</span><select id="f-agg">' +
       AGGS.map((a) => '<option value="' + a.id + '"' + sel(a.id, c.agg) + '>' + a.name + '</option>').join("") + '</select></label>' +
@@ -586,16 +665,23 @@ function saveEditor() {
     limit: Math.max(1, parseInt(g("f-limit"), 10) || 12),
     sort: g("f-sort"),
   };
-  if (chart.agg !== "count" && !chart.measure) {
+  const isDeadlineType = chart.type === "countdown" || chart.type === "deadlines";
+  if (chart.agg !== "count" && !chart.measure && !isDeadlineType) {
     alert('Choose a column under "Of column", or set Measure to "Count of rows".');
     return;
   }
-  if (chart.type !== "kpi" && !chart.groupBy) {
+  if (isDeadlineType && !chart.series) {
+    alert('Choose a date column under "Split by / Date column" for this chart type.');
+    return;
+  }
+  if (!isDeadlineType && chart.type !== "kpi" && !chart.groupBy) {
     alert('Choose a column under "Group by" for this chart type.');
     return;
   }
   if (!chart.title) {
     chart.title = chart.type === "kpi" ? measureLabel(chart)
+      : chart.type === "countdown" ? "Next " + chart.series
+      : chart.type === "deadlines" ? "Upcoming: " + chart.series
       : (chart.agg === "count" ? "Count" : (chart.measure || "Value")) + " by " + chart.groupBy;
   }
   const i = state.charts.findIndex((c) => c.id === state.editingId);
