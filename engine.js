@@ -98,50 +98,73 @@ function autoCharts() {
   const textCols = state.columns.filter((c) => c.type === "text");
   const numCols = state.columns.filter((c) => c.type === "number");
   const dateCols = state.columns.filter((c) => c.type === "date");
-
-  // Skip free-text columns (descriptions, notes, labels) — they make useless categories.
   const rowCount = state.rows.length || 1;
+
+  // Identifier-like and free-text columns make useless categories or measures.
+  const isIdLike = (c) => /serial|model|\bid\b|code|ref|number|uuid|phone|zip|postal/i.test(c.name);
+  const isFreeText = (c) => /detail|description|note|comment|remark|label|title|name of|summary|provider|frequency|address/i.test(c.name);
   const isCategorical = (c) => c.distinct >= 2 && c.distinct <= 40
-    && (c.distinct / rowCount) < 0.5
-    && !/detail|description|note|comment|remark|label|title|name of|summary/i.test(c.name);
+    && (c.distinct / rowCount) < 0.7
+    && (c.filled / rowCount) > 0.5
+    && !isIdLike(c) && !isFreeText(c);
 
   const groupCandidates = textCols.filter(isCategorical)
-    .sort((a, b) => Math.abs(a.distinct - 7) - Math.abs(b.distinct - 7));
-  const mainGroup = groupCandidates[0] ? groupCandidates[0].name : (textCols[0] ? textCols[0].name : null);
-  const secondGroup = groupCandidates[1] ? groupCandidates[1].name : null;
-  const smallCat = textCols.filter((c) => isCategorical(c) && c.distinct <= 8).sort((a, b) => a.distinct - b.distinct)[0];
+    .sort((a, b) => Math.abs(a.distinct - 6) - Math.abs(b.distinct - 6));
+  // The label column (a name/title-like first column) makes the best per-row bar even if every value is unique.
+  const labelCol = textCols[0] ? textCols[0].name : null;
+  const mainGroup = groupCandidates[0] ? groupCandidates[0].name : labelCol;
+  const secondGroup = groupCandidates.find((c) => c.name !== mainGroup);
+  // A column with 2–4 distinct values (Yes/No, status flags) is the clearest possible donut.
+  const flagCol = textCols.find((c) => c.distinct >= 2 && c.distinct <= 4 && (c.filled / rowCount) > 0.6 && !isIdLike(c));
+  const smallCat = flagCol ? flagCol.name : (groupCandidates.find((c) => c.distinct <= 8) || {}).name || null;
 
-  const preferred = numCols.find((c) => /item|count|total|qty|quantity|amount|value|revenue|sales|budget/i.test(c.name)) || numCols[0];
-  const measure = preferred ? preferred.name : null;
+  // Rank numeric columns instead of picking just one: real quantities first
+  // (counts, totals, amounts), computed/id-like numbers last.
+  const isMeaningfulNum = (c) => !isIdLike(c);
+  const nameScore = (c) => /missing|overdue|open|pending|risk|delay|issue|fault|defect/i.test(c.name) ? 3
+    : /item|count|total|qty|quantity|amount|value|revenue|sales|budget|hours|tier|score/i.test(c.name) ? 2 : 1;
+  const rankedNums = numCols.filter(isMeaningfulNum)
+    .sort((a, b) => nameScore(b) - nameScore(a));
+  const measures = rankedNums.slice(0, 2).map((c) => c.name);
+  const primaryMeasure = measures[0] || null;
 
   const charts = [];
+
+  // KPIs: row count plus up to 3 real totals.
   charts.push({ id: uid(), type: "kpi", title: "Total rows", agg: "count", measure: null, groupBy: null, width: "quarter" });
-  numCols.slice(0, 3).forEach((c) => {
+  rankedNums.slice(0, 3).forEach((c) => {
     charts.push({ id: uid(), type: "kpi", title: "Total " + c.name, agg: "sum", measure: c.name, groupBy: null, width: "quarter" });
   });
 
-  if (mainGroup) {
+  // A small, easily-scanned table (10 or fewer rows) reads better as a
+  // per-row bar than as a chart with a dozen tiny wedges or dense stacks.
+  const smallTable = rowCount <= 15;
+
+  measures.forEach((measure, i) => {
+    const byCol = (i === 0 && labelCol && labelCol !== mainGroup) ? labelCol : mainGroup;
+    if (!byCol) return;
     charts.push({
-      id: uid(), type: "bar",
-      title: measure ? measure + " by " + mainGroup : "Rows by " + mainGroup,
-      agg: measure ? "sum" : "count", measure: measure, groupBy: mainGroup, width: "full", limit: 14, sort: "desc",
+      id: uid(), type: smallTable ? "hbar" : "bar",
+      title: measure + " by " + byCol,
+      agg: "sum", measure: measure, groupBy: byCol, width: "full", limit: 14, sort: "desc",
     });
-  }
+  });
+
   if (smallCat) {
-    charts.push({ id: uid(), type: "donut", title: "Breakdown by " + smallCat.name, agg: "count", measure: null, groupBy: smallCat.name, width: "half", limit: 8, sort: "desc" });
+    charts.push({ id: uid(), type: "donut", title: "Breakdown by " + smallCat, agg: "count", measure: null, groupBy: smallCat, width: "half", limit: 8, sort: "desc" });
   }
   if (secondGroup) {
     charts.push({
-      id: uid(), type: "hbar",
-      title: measure ? measure + " by " + secondGroup : "Rows by " + secondGroup,
-      agg: measure ? "sum" : "count", measure: measure, groupBy: secondGroup, width: "half", limit: 10, sort: "desc",
+      id: uid(), type: smallTable ? "progress" : "hbar",
+      title: primaryMeasure ? primaryMeasure + " by " + secondGroup.name : "Rows by " + secondGroup.name,
+      agg: primaryMeasure ? "sum" : "count", measure: primaryMeasure, groupBy: secondGroup.name, width: "half", limit: 10, sort: "desc",
     });
   }
-  if (dateCols.length && measure) {
-    charts.push({ id: uid(), type: "area", title: measure + " over time", agg: "sum", measure: measure, groupBy: dateCols[0].name, width: "full", limit: 24, sort: "date" });
+  if (dateCols.length && primaryMeasure) {
+    charts.push({ id: uid(), type: "area", title: primaryMeasure + " over time", agg: "sum", measure: primaryMeasure, groupBy: dateCols[0].name, width: "full", limit: 24, sort: "date" });
   }
   if (mainGroup) {
-    charts.push({ id: uid(), type: "table", title: "Summary table", agg: measure ? "sum" : "count", measure: measure, groupBy: mainGroup, width: "full", limit: 12, sort: "desc" });
+    charts.push({ id: uid(), type: "table", title: "Summary table", agg: primaryMeasure ? "sum" : "count", measure: primaryMeasure, groupBy: mainGroup, width: "full", limit: 12, sort: "desc" });
   }
   return charts;
 }
@@ -609,9 +632,37 @@ function prettifyFileName(name) {
    Pages hand the engine an array of plain row objects. The engine
    works out column types, then either restores a saved layout for
    this source or generates a fresh starting dashboard.            */
+/* Some tools (SeaTable's Excel export among them) store attachment or
+   linked-record cells as a stringified object, e.g. "{'name': 'file.pdf',
+   'url': '...'}" or a JSON array of those. Shown raw, that's unreadable
+   noise on a chart. Detect it and reduce it to something a chart can use:
+   a short, human label plus a count when there's more than one. */
+function cleanCellValue(v) {
+  if (typeof v !== "string") return v;
+  const s = v.trim();
+  if (!s || (s[0] !== "{" && s[0] !== "[")) return v;
+
+  const names = [];
+  const re = /'name'\s*:\s*'([^']*)'|"name"\s*:\s*"([^"]*)"/g;
+  let m;
+  while ((m = re.exec(s))) names.push(m[1] || m[2]);
+
+  if (names.length === 1) return names[0];
+  if (names.length > 1) return names.length + " files";
+  // Not a recognisable name-bearing structure — at least don't dump raw braces.
+  if (s[0] === "{" || s[0] === "[") return s.length > 1 ? "Attached" : v;
+  return v;
+}
+
+function cleanRow(row) {
+  const out = {};
+  Object.keys(row).forEach(function (k) { out[k] = cleanCellValue(row[k]); });
+  return out;
+}
+
 function ingestRows(rows, opts) {
   opts = opts || {};
-  state.rows = rows || [];
+  state.rows = (rows || []).map(cleanRow);
 
   const headers = [];
   state.rows.forEach(function (r) {
