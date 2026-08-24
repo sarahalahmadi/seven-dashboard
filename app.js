@@ -241,16 +241,16 @@ function renderCountdown(openingDate) {
 
 function renderTrack(deptList, totals, openingDate) {
   const nodesEl = document.getElementById("track-nodes");
-  const fillEl = document.getElementById("track-fill");
-  const overallEl = document.getElementById("overall-pct");
-  const overall = pct(totals.complete, totals.items);
-  overallEl.textContent = overall + "%";
-  fillEl.style.width = overall + "%";
+  const startedFill = document.getElementById("track-fill-started");
+  const completeFill = document.getElementById("track-fill-complete");
 
-  const marker = document.getElementById("runway-marker");
-  document.getElementById("runway-marker-pct").textContent = overall + "%";
-  // Keep the badge inside the bar at either extreme
-  marker.style.left = Math.min(Math.max(overall, 4), 96) + "%";
+  const startedPct = pct(totals.complete + totals.inProgress, totals.items);
+  const completedPct = pct(totals.complete, totals.items);
+
+  startedFill.style.width = startedPct + "%";
+  completeFill.style.width = completedPct + "%";
+  document.getElementById("runway-started-pct").textContent = startedPct + "%";
+  document.getElementById("runway-complete-pct").textContent = completedPct + "%";
 
   document.getElementById("runway-start").textContent =
     new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -260,23 +260,30 @@ function renderTrack(deptList, totals, openingDate) {
 
   const R = 19, C = 2 * Math.PI * R;
   nodesEl.innerHTML = deptList.map((d) => {
-    const p = pct(d.complete, d.items);
+    const completePct = pct(d.complete, d.items);
+    const inProgressPct = pct(d.inProgress, d.items);
+    const startedTotal = pct(d.complete + d.inProgress, d.items);
     const risk = d.startDelayed > 0 || d.completionOverdue > 0;
-    const cls = p >= 100 ? "complete" : risk ? "risk" : "";
-    const ringColor = p >= 100 ? "#17B978" : risk ? "#E01A4F" : d.color;
-    const len = (p / 100) * C;
+    const cls = completePct >= 100 ? "complete" : risk ? "risk" : "";
+
+    const completeLen = (completePct / 100) * C;
+    const startedLen = (startedTotal / 100) * C;
+    const inProgressLen = Math.max(startedLen - completeLen, 0);
+
     return `<div class="track-node ${cls}" style="--node-color:${d.color};">
       <div class="ring">
         <svg viewBox="0 0 44 44" width="44" height="44">
           <circle cx="22" cy="22" r="${R}" fill="none" stroke="var(--border)" stroke-width="4"/>
-          <circle cx="22" cy="22" r="${R}" fill="none" stroke="${ringColor}" stroke-width="4"
-            stroke-linecap="round" stroke-dasharray="${len} ${C - len}"/>
+          <circle cx="22" cy="22" r="${R}" fill="none" stroke="var(--orange)" stroke-width="4"
+            stroke-linecap="round" stroke-dasharray="${inProgressLen} ${C - inProgressLen}" stroke-dashoffset="${-completeLen}"/>
+          <circle cx="22" cy="22" r="${R}" fill="none" stroke="var(--green)" stroke-width="4"
+            stroke-linecap="round" stroke-dasharray="${completeLen} ${C - completeLen}"/>
         </svg>
-        <div class="ring-label">${p}%</div>
+        <div class="ring-label">${startedTotal}%</div>
       </div>
       <div class="meta">
         <div class="name">${d.name}</div>
-        <div class="pct mono">${fmt(d.complete)}/${fmt(d.items)} items</div>
+        <div class="pct mono">Complete ${completePct}% · In progress ${inProgressPct}%</div>
         ${risk ? `<div class="risk-tag">At risk</div>` : ``}
       </div>
     </div>`;
@@ -320,16 +327,6 @@ function renderBarChart(deptList) {
       <div class="bar-sub mono">${fmt(d.items)} items</div>
     </div>`;
   }).join("");
-}
-
-function renderMilestones(deptList, totals) {
-  document.getElementById("milestone-count").textContent = totals.milestones;
-  const all = deptList.flatMap((d) => d.milestones).filter((m) => m.date).sort((a, b) => a.date - b.date).slice(0, 8);
-  document.getElementById("milestone-list").innerHTML = all.length ? all.map((m) => `
-    <div class="milestone-item">
-      <div><div>${m.label || "Milestone"}</div><div class="m-dept">${m.dept}</div></div>
-      <div class="mono">${m.date.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</div>
-    </div>`).join("") : `<div style="font-size:12px; color:var(--ink-dim); padding:12px 0;">No key milestones flagged yet.</div>`;
 }
 
 function renderTimeline(deptList, openingDate) {
@@ -460,7 +457,6 @@ function renderAll() {
   renderTrack(deptList, totals, state.openingDate);
   renderKPIs(totals);
   renderBarChart(deptList);
-  renderMilestones(deptList, totals);
   renderTimeline(deptList, state.openingDate);
   renderDonuts(totals);
   renderReadinessMatrix(ownerList, readinessMatrix);

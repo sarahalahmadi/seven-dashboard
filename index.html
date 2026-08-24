@@ -131,28 +131,21 @@
   .track-head .overall-pct{ font-family:'Space Grotesk'; font-size:15px; color:var(--ink); }
   .track-head .overall-pct b{ color:var(--teal); font-size:20px; }
 
-  /* runway: one honest bar for overall progress toward opening */
-  .runway{ margin:14px 0 26px; }
+  /* two clear progress lines: overall progress (started work) and completed */
+  .runway-group{ margin:14px 0 26px; }
+  .runway-row{ margin-bottom:12px; }
+  .runway-label{
+    display:flex; justify-content:space-between; font-size:12px; color:var(--ink-dim); margin-bottom:6px;
+  }
+  .runway-pct{ color:var(--ink); font-weight:600; }
   .runway-bar{
-    position:relative; height:12px; background:var(--bg-raised);
-    border-radius:999px; border:1px solid var(--border);
+    position:relative; height:10px; border-radius:99px; background:var(--bg-raised); overflow:hidden;
   }
-  .runway-fill{
-    position:absolute; left:0; top:0; bottom:0;
-    background:var(--track-track); background-size:600px 100%;
-    border-radius:999px; transition:width .6s ease; min-width:6px;
-  }
-  .runway-marker{
-    position:absolute; top:-30px; transform:translateX(-50%); transition:left .6s ease;
-  }
-  .runway-marker-pct{
-    display:inline-block; background:var(--bg-raised); border:1px solid var(--teal);
-    color:var(--teal); font-size:11.5px; font-weight:600; padding:3px 9px; border-radius:999px;
-    white-space:nowrap;
-  }
+  .runway-fill{ height:100%; border-radius:99px; transition:width .3s; }
+  .runway-fill-started{ background:var(--teal); }
+  .runway-fill-complete{ background:var(--green); }
   .runway-ends{
-    display:flex; justify-content:space-between; margin-top:10px;
-    font-size:11.5px; color:var(--ink-faint);
+    display:flex; justify-content:space-between; font-size:11px; color:var(--ink-faint); margin-top:8px;
   }
   .runway-flag{ display:flex; align-items:center; gap:6px; color:var(--ink-dim); }
 
@@ -318,13 +311,16 @@
     <div class="track-wrap">
       <div class="track-head">
         <h3 class="display">Critical Path to Opening</h3>
-        <div class="overall-pct"><b id="overall-pct">0%</b> overall complete</div>
       </div>
 
-      <div class="runway">
-        <div class="runway-bar">
-          <div class="runway-fill" id="track-fill" style="width:0%"></div>
-          <div class="runway-marker" id="runway-marker" style="left:0%"><span class="runway-marker-pct mono" id="runway-marker-pct">0%</span></div>
+      <div class="runway-group">
+        <div class="runway-row">
+          <div class="runway-label">Overall progress <span class="runway-pct mono" id="runway-started-pct">0%</span></div>
+          <div class="runway-bar"><div class="runway-fill runway-fill-started" id="track-fill-started" style="width:0%"></div></div>
+        </div>
+        <div class="runway-row">
+          <div class="runway-label">Completed <span class="runway-pct mono" id="runway-complete-pct">0%</span></div>
+          <div class="runway-bar"><div class="runway-fill runway-fill-complete" id="track-fill-complete" style="width:0%"></div></div>
         </div>
         <div class="runway-ends">
           <span class="mono" id="runway-start">Today</span>
@@ -338,24 +334,14 @@
     <!-- KPI cards -->
     <div class="kpi-grid" id="kpi-grid"></div>
 
-    <!-- Bar chart + Milestones -->
-    <div class="row-2">
-      <div class="panel">
-        <h3 class="display">Tasks per Department</h3>
-        <div id="bar-chart"></div>
-        <div class="legend-row">
-          <div class="legend-item"><span class="legend-swatch" style="background:var(--green)"></span>Complete</div>
-          <div class="legend-item"><span class="legend-swatch" style="background:var(--orange)"></span>In Progress</div>
-          <div class="legend-item"><span class="legend-swatch" style="background:var(--bg-raised); border:1px solid var(--border);"></span>Pending</div>
-        </div>
-      </div>
-      <div>
-        <div class="panel">
-          <h3 class="display">Key Milestones</h3>
-          <div class="milestone-count" id="milestone-count">0</div>
-          <div style="font-size:12px; color:var(--ink-dim); margin-top:2px;">Critical milestones tracked</div>
-          <div class="milestone-list" id="milestone-list"></div>
-        </div>
+    <!-- Bar chart -->
+    <div class="panel">
+      <h3 class="display">Tasks per Department</h3>
+      <div id="bar-chart"></div>
+      <div class="legend-row">
+        <div class="legend-item"><span class="legend-swatch" style="background:var(--green)"></span>Complete</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:var(--orange)"></span>In Progress</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:var(--bg-raised); border:1px solid var(--border);"></span>Pending</div>
       </div>
     </div>
 
