@@ -93,7 +93,24 @@ async function seatableFetch(server, token, tableName, silent) {
     headers: { Authorization: "Bearer " + auth.access_token, Accept: "application/json" },
   });
   if (!rowsRes.ok) {
-    if (rowsRes.status === 404) throw new Error('No table called "' + tableName + '" in that base.');
+    if (rowsRes.status === 404) {
+      // Don't just say "not found" — show what this token can actually
+      // see, so a wrong-base mistake is obvious rather than a mystery.
+      let hint = "";
+      try {
+        const metaRes = await fetch(base + "/api/v1/dtables/" + auth.dtable_uuid + "/metadata/", {
+          headers: { Authorization: "Bearer " + auth.access_token, Accept: "application/json" },
+        });
+        if (metaRes.ok) {
+          const meta = await metaRes.json();
+          const names = (meta.metadata && meta.metadata.tables || []).map((t) => t.name);
+          hint = names.length
+            ? " This token can see: " + names.map((n) => '"' + n + '"').join(", ") + ". If \"" + tableName + "\" isn't in that list, this token was created inside a different base."
+            : " This token's base has no tables at all.";
+        }
+      } catch (e) { /* metadata lookup is best-effort — fall through to the plain message */ }
+      throw new Error('No table called "' + tableName + '" in that base.' + hint);
+    }
     throw new Error("Couldn't read the table (HTTP " + rowsRes.status + ")");
   }
   const data = await rowsRes.json();
