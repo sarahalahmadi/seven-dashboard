@@ -161,6 +161,15 @@ function toNumber(v) {
 }
 
 /* ---------- column typing ---------- */
+function looksLikeDateString(s) {
+  return (
+    /^\d{4}-\d{1,2}-\d{1,2}/.test(s) ||                       // 2026-08-25
+    /^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}$/.test(s) ||         // 25/08/2026, 08-25-26
+    /^[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{2,4}$/.test(s) ||      // August 25, 2026 / Aug 25 2026
+    /^\d{1,2}\s+[A-Za-z]{3,9}\.?\s+\d{2,4}$/.test(s)           // 25 August 2026
+  );
+}
+
 function detectType(values, header) {
   let nums = 0, dates = 0, nonEmpty = 0;
   const looksDatey = header && /date|day|start|end|deadline|due|opening|month|year|expiry|expire|renew|recert|valid|inspection|audit|issued/i.test(header);
@@ -173,8 +182,12 @@ function detectType(values, header) {
     }
     const s = String(v).trim();
     if (s !== "" && !isNaN(Number(s.replace(/,/g, "")))) { nums++; continue; }
-    const d = Date.parse(s);
-    if (!isNaN(d) && /[-/0-9]/.test(s) && s.length >= 6) dates++;
+    // Date.parse is dangerously lenient (it happily reads "RK-2201" as a
+    // date) — only trust it once the string actually looks date-shaped.
+    if (looksLikeDateString(s)) {
+      const d = Date.parse(s);
+      if (!isNaN(d)) dates++;
+    }
   }
   if (nonEmpty === 0) return "empty";
   if (dates / nonEmpty >= 0.6) return "date";
@@ -209,14 +222,15 @@ const TEMPLATES = [
       const tiersCol = byName(/tier/);
       const recertCol = byName(/recert/);
       const mfgCol = byName(/manufactur/);
-      const dateCol = cols.find((c) => c.type === "date" && !/estimated/i.test(c.name))
+      const dateCol = cols.find((c) => c.type === "date" && /due|expiry|expire|next|renew|recert/i.test(c.name))
+        || cols.find((c) => c.type === "date" && !/estimated/i.test(c.name) && !/last|previous|issued|start/i.test(c.name))
         || byName(/due|expiry|expire/);
       const estCol = byName(/estimated/);
       const deadlineCol = dateCol || estCol;
 
       const charts = [];
       if (deadlineCol) {
-        charts.push({ id: uid(), type: "countdown", title: "Next " + deadlineCol.name, groupBy: labelCol && labelCol.name, series: deadlineCol.name, agg: "count", measure: null, width: "quarter" });
+        charts.push({ id: uid(), type: "countdown", title: /^next\b/i.test(deadlineCol.name) ? deadlineCol.name : "Next " + deadlineCol.name, groupBy: labelCol && labelCol.name, series: deadlineCol.name, agg: "count", measure: null, width: "quarter" });
       }
       charts.push({ id: uid(), type: "kpi", title: "Total attractions", agg: "count", measure: null, groupBy: null, width: "quarter" });
       if (missingCol) charts.push({ id: uid(), type: "kpi", title: "Total missing docs", agg: "sum", measure: missingCol.name, groupBy: null, width: "quarter" });
@@ -295,6 +309,42 @@ const TEMPLATES = [
       if (areaCol) {
         charts.push({ id: uid(), type: "table", title: "Summary table", agg: agg, measure: measure, groupBy: areaCol.name, width: "full", limit: 14, sort: "desc" });
       }
+      return charts;
+    },
+  },
+  {
+    id: "certification",
+    label: "Certification Tracker",
+    // A certification/compliance log: one row per certificate, with a
+    // type, an issuer, and a real expiry date.
+    matches: function (cols) {
+      const names = cols.map((c) => c.name.toLowerCase());
+      const has = (re) => names.some((n) => re.test(n));
+      return has(/certificate.*type|cert.*type/) && has(/expiry|expire/) && !has(/missing.*doc/);
+    },
+    build: function (cols) {
+      const byName = (re) => cols.find((c) => re.test(c.name.toLowerCase()));
+      const labelCol = byName(/name/) || cols.find((c) => c.type === "text");
+      const typeCol = byName(/certificate.*type|cert.*type/);
+      const issuerCol = byName(/issued.*by|provider|issuer/);
+      const expiryCol = byName(/expiry|expire/) || cols.find((c) => c.type === "date");
+      const statusCol = byName(/status/);
+
+      const charts = [];
+      if (expiryCol) charts.push({ id: uid(), type: "countdown", title: "Next " + expiryCol.name, groupBy: labelCol && labelCol.name, series: expiryCol.name, agg: "count", measure: null, width: "quarter" });
+      charts.push({ id: uid(), type: "kpi", title: "Total certificates", agg: "count", measure: null, groupBy: null, width: "quarter" });
+      if (statusCol) {
+        const expiredNames = ["Expired", "Overdue"];
+        for (const val of expiredNames) {
+          const n = state.rows.filter(function (r) { return String(r[statusCol.name] || "").trim().toLowerCase() === val.toLowerCase(); }).length;
+          if (n > 0) { charts.push({ id: uid(), type: "kpi", title: val + " now", agg: "count", measure: null, groupBy: null, width: "quarter", filterCol: statusCol.name, filterValue: val }); break; }
+        }
+      }
+      if (typeCol) charts.push({ id: uid(), type: "donut", title: "Breakdown by " + typeCol.name, agg: "count", measure: null, groupBy: typeCol.name, width: "half", limit: 8, sort: "desc" });
+      if (issuerCol) charts.push({ id: uid(), type: "hbar", title: "Certificates by " + issuerCol.name, agg: "count", measure: null, groupBy: issuerCol.name, width: "half", limit: 10, sort: "desc" });
+      if (statusCol) charts.push({ id: uid(), type: "donut", title: "Breakdown by " + statusCol.name, agg: "count", measure: null, groupBy: statusCol.name, width: "half", limit: 6, sort: "desc" });
+      if (expiryCol) charts.push({ id: uid(), type: "deadlines", title: "Upcoming: " + expiryCol.name, groupBy: labelCol && labelCol.name, series: expiryCol.name, agg: "count", measure: null, width: "full", limit: 14, sort: "desc" });
+      if (labelCol) charts.push({ id: uid(), type: "table", title: "Summary table", agg: "count", measure: null, groupBy: labelCol.name, width: "full", limit: 14, sort: "desc" });
       return charts;
     },
   },
@@ -386,7 +436,7 @@ function autoCharts() {
   // service, inspection...) gets a countdown up top and a full list.
   const deadlineCol = dateCols.find((c) => /due|expiry|expire|renew|recert|deadline|next[\s_-]*(date|maintenance|service)|inspection|audit|valid[\s_-]*(until|to)/i.test(c.name));
   if (deadlineCol) {
-    charts.unshift({ id: uid(), type: "countdown", title: "Next " + deadlineCol.name, groupBy: labelCol, series: deadlineCol.name, agg: "count", measure: null, width: "quarter" });
+    charts.unshift({ id: uid(), type: "countdown", title: /^next\b/i.test(deadlineCol.name) ? deadlineCol.name : "Next " + deadlineCol.name, groupBy: labelCol, series: deadlineCol.name, agg: "count", measure: null, width: "quarter" });
     charts.push({ id: uid(), type: "deadlines", title: "Upcoming: " + deadlineCol.name, groupBy: labelCol, series: deadlineCol.name, agg: "count", measure: null, width: "half", limit: 10, sort: "desc" });
   }
 
