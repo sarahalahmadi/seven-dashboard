@@ -42,6 +42,7 @@ const state = {
   rows: [],
   charts: [],
   editingId: null,
+  activeTemplate: null,
 };
 
 /* ---------- helpers ---------- */
@@ -182,6 +183,131 @@ function detectType(values, header) {
 }
 
 /* ---------- auto-generated starting dashboard ---------- */
+/* ============================================================
+   Templates — curated chart sets for file shapes we recognize,
+   instead of leaving everything to the generic auto-guess.
+   Each template has a signature test and a builder. The first
+   match wins; if nothing matches, autoCharts() below is the
+   fallback for any file. Add new templates here as new file
+   types are handed over (consumables, certifications, etc).
+   ============================================================ */
+const TEMPLATES = [
+  {
+    id: "maintenance",
+    label: "Maintenance & Certification",
+    // A maintenance/certification sheet: one row per attraction/asset,
+    // with a missing-docs count and a recert flag or frequency column.
+    matches: function (cols) {
+      const names = cols.map((c) => c.name.toLowerCase());
+      const has = (re) => names.some((n) => re.test(n));
+      return has(/missing.*doc/) && has(/recert|certif/) && (has(/frequency|interval/) || has(/tier/));
+    },
+    build: function (cols) {
+      const byName = (re) => cols.find((c) => re.test(c.name.toLowerCase()));
+      const labelCol = byName(/name/) || cols.find((c) => c.type === "text");
+      const missingCol = byName(/missing.*doc/);
+      const tiersCol = byName(/tier/);
+      const recertCol = byName(/recert/);
+      const mfgCol = byName(/manufactur/);
+      const dateCol = cols.find((c) => c.type === "date" && !/estimated/i.test(c.name))
+        || byName(/due|expiry|expire/);
+      const estCol = byName(/estimated/);
+      const deadlineCol = dateCol || estCol;
+
+      const charts = [];
+      if (deadlineCol) {
+        charts.push({ id: uid(), type: "countdown", title: "Next " + deadlineCol.name, groupBy: labelCol && labelCol.name, series: deadlineCol.name, agg: "count", measure: null, width: "quarter" });
+      }
+      charts.push({ id: uid(), type: "kpi", title: "Total attractions", agg: "count", measure: null, groupBy: null, width: "quarter" });
+      if (missingCol) charts.push({ id: uid(), type: "kpi", title: "Total missing docs", agg: "sum", measure: missingCol.name, groupBy: null, width: "quarter" });
+      if (tiersCol) charts.push({ id: uid(), type: "kpi", title: "Total maintenance tiers", agg: "sum", measure: tiersCol.name, groupBy: null, width: "quarter" });
+
+      if (missingCol && labelCol) {
+        charts.push({ id: uid(), type: "hbar", title: missingCol.name + " by " + labelCol.name, agg: "sum", measure: missingCol.name, groupBy: labelCol.name, width: "full", limit: 14, sort: "desc" });
+      }
+      if (recertCol) {
+        charts.push({ id: uid(), type: "donut", title: "Breakdown by " + recertCol.name, agg: "count", measure: null, groupBy: recertCol.name, width: "half", limit: 8, sort: "desc" });
+      }
+      if (mfgCol && tiersCol) {
+        charts.push({ id: uid(), type: "hbar", title: tiersCol.name + " by " + mfgCol.name, agg: "sum", measure: tiersCol.name, groupBy: mfgCol.name, width: "half", limit: 10, sort: "desc" });
+      }
+      if (deadlineCol) {
+        charts.push({ id: uid(), type: "deadlines", title: "Upcoming: " + deadlineCol.name, groupBy: labelCol && labelCol.name, series: deadlineCol.name, agg: "count", measure: null, width: "full", limit: 12, sort: "desc" });
+      }
+      if (labelCol) {
+        charts.push({ id: uid(), type: "table", title: "Summary table", agg: missingCol ? "sum" : "count", measure: missingCol && missingCol.name, groupBy: labelCol.name, width: "full", limit: 14, sort: "desc" });
+      }
+      return charts;
+    },
+  },
+  {
+    id: "consumables",
+    label: "Consumables & COGS Budget",
+    // A consumables/COGS planning sheet: one row per consumable item,
+    // with an area/typology, a P&L classification, and a priority.
+    matches: function (cols) {
+      const names = cols.map((c) => c.name.toLowerCase());
+      const has = (re) => names.some((n) => re.test(n));
+      return has(/consumable/) && has(/p.?&?l|cogs/) && (has(/typology|area/) || has(/budget.*priority/));
+    },
+    build: function (cols) {
+      const byName = (re) => cols.find((c) => re.test(c.name.toLowerCase()));
+      const labelCol = byName(/consumable.*item/) || cols.find((c) => c.type === "text");
+      const areaCol = byName(/typology|area/);
+      const classCol = byName(/p.?&?l.*class|classification/);
+      const priorityCol = byName(/budget.*priority/);
+      const monthlyCostCol = byName(/monthly.*cost/);
+      const annualCostCol = byName(/annual.*cost/);
+
+      // If nobody's filled in real numbers yet, counting items tells the
+      // true story; the moment costs are entered, re-opening the file
+      // switches these same charts over to real SAR totals automatically.
+      const columnSum = function (col) {
+        if (!col) return 0;
+        let s = 0;
+        state.rows.forEach(function (r) { const n = toNumber(r[col.name]); if (n) s += n; });
+        return s;
+      };
+      const costsPopulated = columnSum(monthlyCostCol) > 0 || columnSum(annualCostCol) > 0;
+      const measure = costsPopulated ? (monthlyCostCol ? monthlyCostCol.name : null) : null;
+      const agg = measure ? "sum" : "count";
+
+      const charts = [];
+      charts.push({ id: uid(), type: "kpi", title: "Total consumable items", agg: "count", measure: null, groupBy: null, width: "quarter" });
+      if (monthlyCostCol) charts.push({ id: uid(), type: "kpi", title: "Total monthly cost", agg: "sum", measure: monthlyCostCol.name, groupBy: null, width: "quarter" });
+      if (annualCostCol) charts.push({ id: uid(), type: "kpi", title: "Total annual cost", agg: "sum", measure: annualCostCol.name, groupBy: null, width: "quarter" });
+      if (priorityCol) {
+        charts.push({ id: uid(), type: "kpi", title: "High priority items", agg: "count", measure: null, groupBy: null, width: "quarter", filterCol: priorityCol.name, filterValue: "High" });
+      }
+
+      if (areaCol) {
+        charts.push({ id: uid(), type: "hbar", title: (measure ? monthlyCostCol.name : "Items") + " by " + areaCol.name, agg: agg, measure: measure, groupBy: areaCol.name, width: "full", limit: 14, sort: "desc" });
+      }
+      if (classCol) {
+        charts.push({ id: uid(), type: "donut", title: "Breakdown by " + classCol.name, agg: "count", measure: null, groupBy: classCol.name, width: "half", limit: 6, sort: "desc" });
+      }
+      if (priorityCol) {
+        charts.push({ id: uid(), type: "donut", title: "Breakdown by " + priorityCol.name, agg: "count", measure: null, groupBy: priorityCol.name, width: "half", limit: 6, sort: "desc" });
+      }
+      if (areaCol && classCol) {
+        charts.push({ id: uid(), type: "stacked", title: "Items by " + areaCol.name + ", split by " + classCol.name, groupBy: areaCol.name, series: classCol.name, agg: "count", measure: null, width: "full", limit: 12 });
+      }
+      if (areaCol) {
+        charts.push({ id: uid(), type: "table", title: "Summary table", agg: agg, measure: measure, groupBy: areaCol.name, width: "full", limit: 14, sort: "desc" });
+      }
+      return charts;
+    },
+  },
+  // More templates go here once a sample file defines their shape.
+];
+
+function detectTemplate(cols) {
+  for (const t of TEMPLATES) {
+    try { if (t.matches(cols)) return t; } catch (e) { /* a bad matcher shouldn't break loading */ }
+  }
+  return null;
+}
+
 function autoCharts() {
   const textCols = state.columns.filter((c) => c.type === "text");
   const numCols = state.columns.filter((c) => c.type === "number");
@@ -531,11 +657,13 @@ function drawKpi(chart) {
   const vals = [];
   let count = 0;
   for (const r of state.rows) {
+    if (chart.filterCol && String(r[chart.filterCol] || "").trim().toLowerCase() !== String(chart.filterValue || "").trim().toLowerCase()) continue;
     count++;
     if (chart.measure) { const n = toNumber(r[chart.measure]); if (n !== null) vals.push(n); }
   }
   const v = computeValue(chart.agg, vals, count);
-  return '<div class="kpi-body"><div class="kpi-num mono">' + fmt(v) + '</div><div class="kpi-cap">' + esc(measureLabel(chart)) + '</div></div>';
+  const cap = chart.filterCol ? esc(chart.title) : esc(measureLabel(chart));
+  return '<div class="kpi-body"><div class="kpi-num mono">' + fmt(v) + '</div><div class="kpi-cap">' + cap + '</div></div>';
 }
 
 function drawCountdown(chart) {
@@ -752,7 +880,7 @@ function allLayouts() { try { return JSON.parse(localStorage.getItem(STORE) || "
 function saveLayout() {
   try {
     const all = allLayouts();
-    all[layoutKey()] = { title: state.boardTitle, charts: state.charts };
+    all[layoutKey()] = { title: state.boardTitle, charts: state.charts, template: state.activeTemplate };
     localStorage.setItem(STORE, JSON.stringify(all));
   } catch (e) { /* storage unavailable */ }
 }
@@ -817,8 +945,11 @@ function ingestRows(rows, opts) {
   if (saved && saved.charts && saved.charts.length) {
     state.charts = saved.charts;
     if (saved.title) state.boardTitle = saved.title;
+    state.activeTemplate = saved.template || null;
   } else {
-    state.charts = autoCharts();
+    const tmpl = detectTemplate(state.columns);
+    state.activeTemplate = tmpl ? tmpl.label : null;
+    state.charts = tmpl ? tmpl.build(state.columns) : autoCharts();
   }
   renderAll();
 }

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SEVEN Discovery Dashboard</title>
+<link rel="icon" href="logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg-void:#0B0E14; --bg-panel:#131826; --bg-panel-alt:#171e2e; --bg-raised:#1c2438;
+    --border:#242c40; --ink:#EDEFF3; --ink-dim:#8891A3; --ink-faint:#545E72;
+    --teal:#0CAFBF; --orange:#F19A27; --magenta:#E01A4F; --blue:#1560A8; --green:#17B978;
+    --radius:14px;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ background:var(--bg-void); color:var(--ink); font-family:'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  body{
+    background-image:
+      radial-gradient(circle at 12% 8%, rgba(12,175,191,0.06), transparent 40%),
+      radial-gradient(circle at 88% 92%, rgba(224,26,79,0.05), transparent 40%);
+    min-height:100vh; padding-bottom:64px;
+  }
+  .display{ font-family:'Space Grotesk',sans-serif; }
+  .mono{ font-family:'IBM Plex Mono',monospace; }
+  a{ color:inherit; text-decoration:none; }
+  .dimmed{ color:var(--ink-dim); }
+
+  header.top{
+    display:flex; align-items:center; justify-content:space-between; gap:20px;
+    padding:20px 32px; border-bottom:1px solid var(--border);
+    background:rgba(19,24,38,0.75); backdrop-filter:blur(10px);
+    position:sticky; top:0; z-index:50; flex-wrap:wrap;
+  }
+  .brand{ display:flex; align-items:center; gap:14px; }
+  .brand img{ width:38px; height:38px; border-radius:9px; object-fit:cover; }
+  .brand .name{ font-family:'Space Grotesk',sans-serif; font-weight:600; letter-spacing:2px; font-size:13px; color:var(--ink-dim); }
+  .brand .name b{ color:var(--ink); font-weight:700; }
+  .top-actions{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .btn{
+    display:inline-flex; align-items:center; gap:7px; cursor:pointer;
+    border:1px solid var(--border); background:var(--bg-raised); color:var(--ink);
+    padding:9px 15px; border-radius:10px; font-size:13px; font-weight:600; font-family:'Inter',sans-serif;
+  }
+  .btn.primary{ background:var(--teal); border-color:var(--teal); color:#04262a; }
+  .btn.ghost{ background:transparent; }
+  .btn:hover{ filter:brightness(1.1); }
+
+  main{ max-width:1560px; margin:0 auto; padding:26px 32px; }
+
+  #empty-state{ display:flex; flex-direction:column; align-items:center; gap:20px; padding:60px 20px; }
+  #drop-zone{
+    width:100%; max-width:660px; border:2px dashed var(--border); border-radius:20px;
+    padding:56px 32px; text-align:center; background:var(--bg-panel); transition:all .15s;
+  }
+  #drop-zone.drag{ border-color:var(--teal); background:var(--bg-panel-alt); }
+  #drop-zone h2{ font-family:'Space Grotesk',sans-serif; font-size:22px; margin-bottom:10px; }
+  #drop-zone p{ color:var(--ink-dim); font-size:14px; margin-bottom:22px; }
+  .hint{ color:var(--ink-faint); font-size:12.5px; max-width:560px; text-align:center; line-height:1.65; }
+
+  .title-row{ display:flex; align-items:baseline; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+  .board-title{
+    background:transparent; border:none; border-bottom:2px solid transparent; color:var(--ink);
+    font-family:'Space Grotesk',sans-serif; font-size:28px; font-weight:600; padding:2px 4px;
+    min-width:300px; outline:none; transition:border-color .15s;
+  }
+  .board-title:hover{ border-bottom-color:var(--border); }
+  .board-title:focus{ border-bottom-color:var(--teal); }
+  .board-title::placeholder{ color:var(--ink-faint); font-style:italic; }
+
+  .file-bar{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:22px; }
+  .file-chip{ display:flex; align-items:center; gap:9px; background:var(--bg-panel); border:1px solid var(--border); border-radius:10px; padding:8px 14px; font-size:12.5px; }
+  .file-chip .dot{ width:8px; height:8px; border-radius:50%; background:var(--green); }
+  select.pill{ background:var(--bg-raised); color:var(--ink); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:13px; font-family:'Inter',sans-serif; }
+  .ctrl-group{ display:flex; align-items:center; gap:8px; }
+  .ctrl-group label{ font-size:12px; color:var(--ink-dim); }
+  .spacer{ flex:1; }
+
+  /* chart grid */
+  #chart-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:18px; align-items:start; }
+  .chart-card{
+    background:var(--bg-panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:16px 18px 14px; display:flex; flex-direction:column; min-width:0;
+  }
+  .chart-card.w-quarter{ grid-column:span 1; }
+  .chart-card.w-half{ grid-column:span 2; }
+  .chart-card.w-full{ grid-column:span 4; }
+  @media (max-width:1100px){
+    #chart-grid{ grid-template-columns:repeat(2,1fr); }
+    .chart-card.w-quarter{ grid-column:span 1; }
+    .chart-card.w-half, .chart-card.w-full{ grid-column:span 2; }
+  }
+  @media (max-width:680px){
+    #chart-grid{ grid-template-columns:1fr; }
+    .chart-card{ grid-column:span 1 !important; }
+  }
+
+  .chart-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:12px; }
+  .chart-title{ font-size:14px; font-weight:600; line-height:1.35; word-break:break-word; }
+  .chart-tools{ display:flex; gap:3px; opacity:0; transition:opacity .15s; flex-shrink:0; }
+  .chart-card:hover .chart-tools{ opacity:1; }
+  .tool{
+    cursor:pointer; background:var(--bg-raised); border:1px solid var(--border); color:var(--ink-dim);
+    width:26px; height:26px; border-radius:7px; font-size:11px; line-height:1; display:flex; align-items:center; justify-content:center;
+  }
+  .tool:hover:not(:disabled){ color:var(--ink); border-color:var(--teal); }
+  .tool:disabled{ opacity:.3; cursor:default; }
+  .tool.danger:hover{ color:var(--magenta); border-color:var(--magenta); }
+
+  .chart-body{ flex:1; min-width:0; }
+  .chart-svg{ width:100%; height:auto; display:block; overflow:visible; }
+  .chart-empty{ color:var(--ink-faint); font-size:12.5px; padding:28px 4px; text-align:center; }
+
+  .grid{ stroke:var(--border); stroke-width:1; }
+  .axis-lbl{ fill:var(--ink-faint); font-size:10px; font-family:'IBM Plex Mono',monospace; }
+  .cat-lbl{ fill:var(--ink-dim); font-size:10.5px; font-family:'Inter',sans-serif; }
+  .val-lbl{ fill:var(--ink); font-size:10.5px; font-family:'IBM Plex Mono',monospace; font-weight:500; }
+  .donut-num{ fill:var(--ink); font-size:22px; font-weight:600; font-family:'IBM Plex Mono',monospace; }
+  .donut-cap{ fill:var(--ink-faint); font-size:9px; letter-spacing:1.4px; font-family:'Inter',sans-serif; }
+
+  .kpi-body{ padding:6px 0 10px; }
+  .kpi-num{ font-size:32px; font-weight:600; line-height:1.1; }
+  .kpi-cap{ font-size:11px; color:var(--ink-dim); margin-top:6px; }
+
+  .prog-list{ display:flex; flex-direction:column; gap:12px; padding-top:2px; }
+  .prog-top{ display:flex; justify-content:space-between; gap:10px; font-size:12.5px; margin-bottom:5px; }
+  .prog-name{ color:var(--ink); }
+  .prog-val{ color:var(--ink-dim); }
+  .prog-track{ height:8px; background:var(--bg-raised); border-radius:99px; overflow:hidden; }
+  .prog-fill{ height:100%; border-radius:99px; }
+
+  .v-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  .v-table th{ text-align:left; color:var(--ink-dim); font-weight:600; font-size:10.5px; letter-spacing:.4px; text-transform:uppercase; padding:8px 12px; border-bottom:1px solid var(--border); }
+  .v-table td{ padding:8px 12px; border-bottom:1px solid rgba(36,44,64,0.5); }
+  .tbl-scroll{ overflow-x:auto; max-height:320px; overflow-y:auto; }
+  .no-charts{ grid-column:span 4; text-align:center; color:var(--ink-dim); padding:60px 20px; font-size:14px; }
+
+  /* editor modal */
+  #editor-modal{ display:none; position:fixed; inset:0; background:rgba(4,6,11,0.72); backdrop-filter:blur(3px); z-index:200; align-items:center; justify-content:center; padding:24px; }
+  #editor-modal.open{ display:flex; }
+  .modal-card{ background:var(--bg-panel); border:1px solid var(--border); border-radius:18px; width:100%; max-width:560px; max-height:88vh; overflow-y:auto; padding:26px 28px; }
+  .modal-card h2{ font-family:'Space Grotesk',sans-serif; font-size:19px; margin-bottom:20px; }
+  .fld{ display:block; margin-bottom:15px; }
+  .fld span{ display:block; font-size:12px; color:var(--ink-dim); margin-bottom:6px; }
+  .fld em{ font-style:normal; color:var(--ink-faint); }
+  .fld select, .fld input{
+    width:100%; background:var(--bg-raised); color:var(--ink); border:1px solid var(--border);
+    border-radius:9px; padding:10px 12px; font-size:13.5px; font-family:'Inter',sans-serif; outline:none;
+  }
+  .fld select:focus, .fld input:focus{ border-color:var(--teal); }
+  .modal-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:22px; }
+
+  @media print{
+    header.top, .chart-tools, .file-bar .ctrl-group, #add-chart-btn, #reset-btn, #print-btn{ display:none !important; }
+    body{ background:#fff; color:#000; }
+    .chart-card{ break-inside:avoid; border-color:#ccc; }
+  }
+</style>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="logo.png" alt="SEVEN" />
+      <div class="name"><b>SEVEN</b> DISCOVERY</div>
+    </div>
+    <div class="top-actions">
+      <a class="btn ghost" href="home.html">← All dashboards</a>
+      <button class="btn" id="print-btn">⎙ Print / PDF</button>
+      <button class="btn primary" id="upload-btn">⇧ Open a file</button>
+      <input type="file" id="file-input" accept=".xlsx,.xls,.csv" style="display:none" />
+    </div>
+  </header>
+
+  <main>
+    <div id="empty-state">
+      <div id="drop-zone">
+        <h2 class="display">Drop any spreadsheet here</h2>
+        <p>Excel or CSV. Recognized files get a dedicated template — maintenance & certification, and more as they're added — anything else gets a smart general dashboard.</p>
+        <button class="btn primary" onclick="document.getElementById('file-input').click()">Choose a file</button>
+      </div>
+      <div class="hint">Your file stays on your computer. Works best with one header row and one record per row.</div>
+    </div>
+
+    <div id="board" style="display:none">
+      <div class="title-row">
+        <input id="board-title" class="board-title" placeholder="Name this dashboard…" spellcheck="false" />
+      </div>
+
+      <div class="file-bar">
+        <div class="file-chip"><span class="dot"></span><span id="file-name" class="mono">—</span></div>
+        <div class="file-chip" id="template-chip" style="display:none"><span id="template-name"></span></div>
+        <div class="ctrl-group" id="sheet-wrap" style="display:none">
+          <label>Sheet</label>
+          <select class="pill" id="sheet-select"></select>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn ghost" id="reset-btn">↻ Auto-rebuild</button>
+        <button class="btn primary" id="add-chart-btn">+ Add chart</button>
+      </div>
+
+      <div id="chart-grid"></div>
+    </div>
+  </main>
+
+  <div id="editor-modal">
+    <div class="modal-card">
+      <h2 id="editor-heading">Add chart</h2>
+      <div id="editor-form"></div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="editor-cancel">Cancel</button>
+        <button class="btn primary" id="editor-save">Save chart</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="engine.js"></script>
+  <script src="discovery.js"></script>
+</body>
+</html>

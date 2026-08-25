@@ -80,17 +80,6 @@ Your layout and title are remembered per file and sheet, so reopening the same f
 
 It works best on a clean table (one header row, one record per row). Everything runs in the browser — files never leave the machine. The Critical Path dashboard (`index.html` + `app.js`) is untouched.
 
-## Live (SeaTable)
-
-A third page, **`live.html`**, connects to SeaTable so dashboards update themselves — no file to upload. It uses the same chart builder as the Visualizer, so every chart is editable, and your layout is reapplied each time the data refreshes.
-
-Two ways to connect:
-
-1. **Scheduled snapshot (recommended)** — a GitHub Action fetches the rows on a schedule into `data/live.json`; the token lives in GitHub Secrets and never reaches a browser.
-2. **Direct connect** — enter the server, token and table in the page; nothing is written into the site's code. Only works if your SeaTable server allows direct browser access.
-
-Full setup instructions, including the security decision about your public repo, are in **`SEATABLE-SETUP.md`**.
-
 ## File map
 
 | File | Purpose |
@@ -103,3 +92,16 @@ Full setup instructions, including the security decision about your public repo,
 | `scripts/fetch_seatable.py` | SeaTable → `data/live.json` |
 | `.github/workflows/refresh-data.yml` | scheduled refresh |
 | `logo.png` | logo |
+
+## Discovery Dashboard
+
+A third page, **`discovery.html`**, replaces the old Live/SeaTable page. It works like the Visualizer (upload a file, get an editable dashboard) but checks the file's columns against a library of templates first.
+
+Recognized shapes get a dedicated, hand-designed dashboard instead of a generic guess. Right now there's one template:
+
+- **Maintenance & Certification** — matches any file with a missing-docs count and a recertification or frequency column. Shows a certification countdown, missing docs per item, recert status breakdown, and manufacturer-level totals.
+- **Consumables & COGS Budget** — matches any file with a consumable item column plus a P&L/COGS classification. Shows item counts by area, COGS vs OPEX split, budget priority split, and a stacked breakdown. If Monthly/Annual Cost columns are actually filled in, it automatically switches from counting items to summing real SAR totals.
+
+When a file matches, a "Template: ..." badge shows next to the file name. Anything that doesn't match a known shape falls back to the same smart auto-dashboard as the Visualizer.
+
+New templates (consumables, etc.) get added to the `TEMPLATES` list at the top of `engine.js` as more sample files define their shape.
