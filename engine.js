@@ -222,6 +222,8 @@ const TEMPLATES = [
       const tiersCol = byName(/tier/);
       const recertCol = byName(/recert/);
       const mfgCol = byName(/manufactur/);
+      const certTypeCol = byName(/certificate.*type|cert.*type/);
+      const statusCol = byName(/status/);
       const dateCol = cols.find((c) => c.type === "date" && /due|expiry|expire|next|renew|recert/i.test(c.name))
         || cols.find((c) => c.type === "date" && !/estimated/i.test(c.name) && !/last|previous|issued|start/i.test(c.name))
         || byName(/due|expiry|expire/);
@@ -244,6 +246,14 @@ const TEMPLATES = [
       }
       if (mfgCol && tiersCol) {
         charts.push({ id: uid(), type: "hbar", title: tiersCol.name + " by " + mfgCol.name, agg: "sum", measure: tiersCol.name, groupBy: mfgCol.name, width: "half", limit: 10, sort: "desc" });
+      }
+      // A certification-flavored maintenance sheet — surface the extra
+      // certificate fields rather than leaving them unused.
+      if (certTypeCol) {
+        charts.push({ id: uid(), type: "donut", title: "Breakdown by " + certTypeCol.name, agg: "count", measure: null, groupBy: certTypeCol.name, width: "half", limit: 8, sort: "desc" });
+      }
+      if (statusCol) {
+        charts.push({ id: uid(), type: "donut", title: "Breakdown by " + statusCol.name, agg: "count", measure: null, groupBy: statusCol.name, width: "half", limit: 6, sort: "desc" });
       }
       if (deadlineCol) {
         charts.push({ id: uid(), type: "deadlines", title: "Upcoming: " + deadlineCol.name, groupBy: labelCol && labelCol.name, series: deadlineCol.name, agg: "count", measure: null, width: "full", limit: 12, sort: "desc" });
