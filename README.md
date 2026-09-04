@@ -69,7 +69,7 @@ Alongside the Critical Path dashboard there's a second page, **`visualizer.html`
 
 Drop in a spreadsheet and it detects each column's type (text / number / date) and generates a starting dashboard. From there you control everything:
 
-- **+ Add chart** — pick from 10 types: KPI number, bar, horizontal bar, stacked bar, line, area, donut, pie, progress bars, table.
+- **+ Add chart** — pick from 18 types: KPI number, gauge, countdown, deadlines list, bar, horizontal bar, stacked bar, combo (bars + line), line, area, donut, pie, treemap, funnel, waterfall, heatmap table, progress bars, table.
 - **Per chart** (hover the card): edit ✎, duplicate ⧉, move ◀ ▶, remove ✕.
 - **In the editor**: chart type, title, group-by column, split-by column (for stacked), measure (count / sum / average / min / max) and which column to measure, size (quarter / half / full width), how many items to show, and sort order.
 - **Name the dashboard** — click the big title and type.
@@ -105,3 +105,11 @@ Recognized shapes get a dedicated, hand-designed dashboard instead of a generic 
 When a file matches, a "Template: ..." badge shows next to the file name. Anything that doesn't match a known shape falls back to the same smart auto-dashboard as the Visualizer.
 
 New templates (consumables, etc.) get added to the `TEMPLATES` list at the top of `engine.js` as more sample files define their shape.
+
+## Cross-filtering (Power BI style)
+
+Click any bar, slice, treemap tile, funnel band, progress row, or table row on any chart, and every other chart on the page narrows to just the matching rows. KPIs recalculate, gauges move, and a banner at the top shows what's filtered with a **Clear filter** button. Click the same element again to clear. This works on both the Visualizer and the Discovery Dashboard.
+
+## Gauge target
+
+A gauge shows a value as a dial against a target. Set the target in the chart editor. Leave it blank and the target defaults to the unfiltered total, so with a filter active the gauge reads as "share of the whole".

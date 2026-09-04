@@ -11,15 +11,21 @@ const colorFor = (i) => PALETTE[i % PALETTE.length];
 
 const CHART_TYPES = [
   { id: "kpi",       name: "KPI number" },
+  { id: "gauge",     name: "Gauge (value vs target)" },
   { id: "countdown", name: "Countdown (nearest date)" },
   { id: "deadlines", name: "Deadlines list" },
   { id: "bar",       name: "Bar (vertical)" },
   { id: "hbar",      name: "Bar (horizontal)" },
   { id: "stacked",   name: "Stacked bar" },
+  { id: "combo",     name: "Combo (bars + line)" },
   { id: "line",      name: "Line" },
   { id: "area",      name: "Area" },
   { id: "donut",     name: "Donut" },
   { id: "pie",       name: "Pie" },
+  { id: "treemap",   name: "Treemap" },
+  { id: "funnel",    name: "Funnel" },
+  { id: "waterfall", name: "Waterfall" },
+  { id: "heatmap",   name: "Heatmap table" },
   { id: "progress",  name: "Progress bars" },
   { id: "table",     name: "Table" },
 ];
@@ -43,7 +49,19 @@ const state = {
   charts: [],
   editingId: null,
   activeTemplate: null,
+  // Cross-filter: click a bar, slice, or row on any chart and every other
+  // chart narrows to match — the interaction that makes a dashboard feel
+  // like Power BI rather than a static report. null = no filter.
+  filter: null,   // { col, key }
 };
+
+/* Rows the charts should currently draw from: everything, or just the
+   rows matching the active cross-filter. */
+function activeRows() {
+  if (!state.filter) return state.rows;
+  const f = state.filter;
+  return state.rows.filter(function (r) { return groupKey(r, f.col) === f.key; });
+}
 
 /* ---------- helpers ---------- */
 const fmt = (n) => {
@@ -143,7 +161,7 @@ function computeDeadlines(chart) {
   if (!dateCol) return [];
   const today = new Date();
   const items = [];
-  state.rows.forEach(function (r) {
+  activeRows().forEach(function (r) {
     const d = parseAnyDate(r[dateCol]);
     if (!d) return;
     const label = labelCol ? String(r[labelCol] || "(blank)") : "Item";
@@ -484,7 +502,7 @@ function groupKey(row, col) {
 
 function aggregate(chart) {
   const map = new Map();
-  for (const r of state.rows) {
+  for (const r of activeRows()) {
     const key = chart.groupBy ? groupKey(r, chart.groupBy) : "All";
     if (!map.has(key)) map.set(key, { key: key, vals: [], count: 0 });
     const b = map.get(key);
@@ -503,7 +521,7 @@ function aggregate(chart) {
 
 function aggregateStacked(chart) {
   const cats = new Map(), serSet = new Set();
-  for (const r of state.rows) {
+  for (const r of activeRows()) {
     const k = groupKey(r, chart.groupBy);
     const s = chart.series ? groupKey(r, chart.series) : "All";
     serSet.add(s);
@@ -543,10 +561,33 @@ function svgWrap(W, H, inner) {
   return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" class="chart-svg">' + inner + '</svg>';
 }
 
+/* Attributes that turn any drawn element into a cross-filter trigger.
+   Clicking it filters every chart to rows where `col` == `key`. Also
+   marks the currently-selected element so it reads as "active". */
+function clickAttrs(chart, key) {
+  if (!chart.groupBy) return "";
+  const active = state.filter && state.filter.col === chart.groupBy && state.filter.key === key;
+  return ' class="clickable' + (active ? " active" : "") + '" data-fcol="' + esc(chart.groupBy) + '" data-fkey="' + esc(key) + '"';
+}
+
+/* Category label that tilts when there are too many to fit upright. */
+function catLabel(x, y, text, count) {
+  if (count > 7) {
+    return '<text x="' + x + '" y="' + (y - 6) + '" text-anchor="end" transform="rotate(-35 ' + x + ' ' + (y - 6) + ')" class="cat-lbl">' + esc(clip(text, 14)) + '</text>';
+  }
+  return '<text x="' + x + '" y="' + y + '" text-anchor="middle" class="cat-lbl">' + esc(clip(text, 12)) + '</text>';
+}
+
+/* When a filter is active, everything NOT selected should visually recede. */
+function dimIf(chart, key) {
+  if (!state.filter || state.filter.col !== chart.groupBy) return "";
+  return state.filter.key === key ? "" : ' opacity="0.3"';
+}
+
 function drawBar(chart, W, H) {
   const data = aggregate(chart);
   if (!data.length) return '<div class="chart-empty">No data</div>';
-  const P = { l: 56, r: 14, t: 20, b: 54 };
+  const P = { l: 56, r: 14, t: 20, b: data.length > 7 ? 74 : 54 };
   const max = niceMax(Math.max.apply(null, data.map((d) => d.value).concat([0])));
   const iw = W - P.l - P.r, ih = H - P.t - P.b;
   const step = iw / data.length;
@@ -562,10 +603,10 @@ function drawBar(chart, W, H) {
     const h = max ? (d.value / max) * ih : 0;
     const x = P.l + step * i + (step - bw) / 2;
     const y = P.t + ih - h;
-    return '<g><title>' + esc(d.key) + ': ' + fmtFull(d.value) + '</title>' +
+    return '<g' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + '><title>' + esc(d.key) + ': ' + fmtFull(d.value) + '</title>' +
       '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + Math.max(h, 1) + '" rx="4" fill="' + colorFor(i) + '"/>' +
       '<text x="' + (x + bw / 2) + '" y="' + (y - 6) + '" text-anchor="middle" class="val-lbl">' + fmt(d.value) + '</text>' +
-      '<text x="' + (x + bw / 2) + '" y="' + (H - P.b + 18) + '" text-anchor="middle" class="cat-lbl">' + esc(clip(d.key, 12)) + '</text></g>';
+      catLabel(x + bw / 2, H - P.b + 18, d.key, data.length) + '</g>';
   }).join("");
 
   return svgWrap(W, H, grid + bars);
@@ -583,7 +624,7 @@ function drawHBar(chart, W, H) {
   const bars = data.map(function (d, i) {
     const w = (d.value / max) * iw;
     const y = P.t + step * i + (step - bh) / 2;
-    return '<g><title>' + esc(d.key) + ': ' + fmtFull(d.value) + '</title>' +
+    return '<g' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + '><title>' + esc(d.key) + ': ' + fmtFull(d.value) + '</title>' +
       '<text x="' + (P.l - 10) + '" y="' + (y + bh / 2 + 4) + '" text-anchor="end" class="cat-lbl">' + esc(clip(d.key, 18)) + '</text>' +
       '<rect x="' + P.l + '" y="' + y + '" width="' + Math.max(w, 1) + '" height="' + bh + '" rx="4" fill="' + colorFor(i) + '"/>' +
       '<text x="' + (P.l + w + 8) + '" y="' + (y + bh / 2 + 4) + '" class="val-lbl">' + fmt(d.value) + '</text></g>';
@@ -638,7 +679,7 @@ function drawPieDonut(chart, W, H, isDonut) {
   const slices = data.map(function (d, i) {
     const a0 = (acc / total) * 360; acc += d.value;
     const a1 = (acc / total) * 360;
-    return '<path d="' + arcPath(cx, cy, rO, rI, a0, Math.max(a1, a0 + 0.01)) + '" fill="' + colorFor(i) +
+    return '<path' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + ' d="' + arcPath(cx, cy, rO, rI, a0, Math.max(a1, a0 + 0.01)) + '" fill="' + colorFor(i) +
       '" stroke="var(--bg-panel)" stroke-width="1.5"><title>' + esc(d.key) + ': ' + fmtFull(d.value) + ' (' + Math.round(d.value / total * 100) + '%)</title></path>';
   }).join("");
   const center = isDonut
@@ -647,7 +688,7 @@ function drawPieDonut(chart, W, H, isDonut) {
   const lx = cx + rO + 24;
   const legend = data.slice(0, 9).map(function (d, i) {
     const y = 26 + i * 21;
-    return '<g><rect x="' + lx + '" y="' + (y - 9) + '" width="11" height="11" rx="3" fill="' + colorFor(i) + '"/>' +
+    return '<g' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + '><rect x="' + lx + '" y="' + (y - 9) + '" width="11" height="11" rx="3" fill="' + colorFor(i) + '"/>' +
       '<text x="' + (lx + 18) + '" y="' + y + '" class="cat-lbl">' + esc(clip(d.key, 16)) + '</text>' +
       '<text x="' + (W - 12) + '" y="' + y + '" text-anchor="end" class="val-lbl">' + fmt(d.value) + '</text></g>';
   }).join("");
@@ -696,7 +737,7 @@ function drawProgress(chart) {
   const max = Math.max.apply(null, data.map((d) => d.value).concat([1]));
   return '<div class="prog-list">' + data.map(function (d, i) {
     const p = (d.value / max) * 100;
-    return '<div class="prog-row"><div class="prog-top"><span class="prog-name">' + esc(d.key) + '</span>' +
+    return '<div class="prog-row' + (state.filter && state.filter.col === chart.groupBy ? (state.filter.key === d.key ? ' active' : ' dimmed-row') : '') + ' clickable" data-fcol="' + esc(chart.groupBy) + '" data-fkey="' + esc(d.key) + '"><div class="prog-top"><span class="prog-name">' + esc(d.key) + '</span>' +
       '<span class="prog-val mono">' + fmtFull(d.value) + '</span></div>' +
       '<div class="prog-track"><div class="prog-fill" style="width:' + p + '%; background:' + colorFor(i) + '"></div></div></div>';
   }).join("") + '</div>';
@@ -708,15 +749,201 @@ function drawTable(chart) {
   const total = data.reduce((a, b) => a + b.value, 0) || 1;
   return '<div class="tbl-scroll"><table class="v-table"><thead><tr><th>' + esc(chart.groupBy || "Group") +
     '</th><th>' + esc(measureLabel(chart)) + '</th><th>Share</th></tr></thead><tbody>' +
-    data.map((d) => '<tr><td>' + esc(d.key) + '</td><td class="mono">' + fmtFull(d.value) +
+    data.map((d) => '<tr class="clickable' + (state.filter && state.filter.col === chart.groupBy && state.filter.key === d.key ? ' active' : '') + '" data-fcol="' + esc(chart.groupBy) + '" data-fkey="' + esc(d.key) + '"><td>' + esc(d.key) + '</td><td class="mono">' + fmtFull(d.value) +
       '</td><td class="mono dimmed">' + Math.round(d.value / total * 100) + '%</td></tr>').join("") +
     '</tbody></table></div>';
+}
+
+/* ---------- Power BI style visuals ---------- */
+
+/* Gauge: a single value drawn as a dial against a target. If no target
+   is set, the target defaults to the UNFILTERED total, so when a filter
+   is active the dial naturally reads as "share of the whole". */
+function drawGauge(chart, W, H) {
+  const vals = [];
+  let count = 0;
+  for (const r of activeRows()) {
+    count++;
+    if (chart.measure) { const n = toNumber(r[chart.measure]); if (n !== null) vals.push(n); }
+  }
+  const value = computeValue(chart.agg, vals, count);
+
+  let target = toNumber(chart.target);
+  if (target === null || target <= 0) {
+    const allVals = []; let allCount = 0;
+    for (const r of state.rows) { allCount++; if (chart.measure) { const n = toNumber(r[chart.measure]); if (n !== null) allVals.push(n); } }
+    target = computeValue(chart.agg, allVals, allCount) || 1;
+  }
+  const pct = Math.max(0, Math.min(1, target ? value / target : 0));
+  const cx = W / 2, cy = H * 0.72, R = Math.min(W * 0.36, H * 0.6);
+  const color = pct >= 0.9 ? "var(--green)" : pct >= 0.5 ? "var(--teal)" : "var(--orange)";
+  // Half-circle from 180° (left) to 360° (right).
+  const track = arcPath(cx, cy, R, R * 0.72, 270, 450);
+  const fill = arcPath(cx, cy, R, R * 0.72, 270, 270 + pct * 180);
+  return svgWrap(W, H,
+    '<path d="' + track + '" fill="var(--bg-raised)"/>' +
+    (pct > 0 ? '<path d="' + fill + '" fill="' + color + '"><title>' + fmtFull(value) + ' of ' + fmtFull(target) + '</title></path>' : "") +
+    '<text x="' + cx + '" y="' + (cy - 8) + '" text-anchor="middle" class="donut-num">' + Math.round(pct * 100) + '%</text>' +
+    '<text x="' + cx + '" y="' + (cy + 12) + '" text-anchor="middle" class="donut-cap">' + esc(fmt(value) + " OF " + fmt(target)) + '</text>' +
+    '<text x="' + (cx - R) + '" y="' + (cy + 26) + '" text-anchor="middle" class="axis-lbl">0</text>' +
+    '<text x="' + (cx + R) + '" y="' + (cy + 26) + '" text-anchor="middle" class="axis-lbl">' + fmt(target) + '</text>');
+}
+
+/* Treemap: proportions as nested rectangles, using a simple squarified
+   slice-and-dice layout that is good enough for a dozen categories. */
+function drawTreemap(chart, W, H) {
+  const data = aggregate(chart).filter((d) => d.value > 0);
+  if (!data.length) return '<div class="chart-empty">No data</div>';
+  const total = data.reduce((a, b) => a + b.value, 0);
+  const rects = [];
+  // Recursive slice: split the remaining list in two by value, alternating axis.
+  function layout(items, x, y, w, h, horiz) {
+    if (!items.length) return;
+    if (items.length === 1) { rects.push({ d: items[0], x, y, w, h }); return; }
+    const sum = items.reduce((a, b) => a + b.value, 0);
+    let acc = 0, split = 0;
+    for (let i = 0; i < items.length; i++) { acc += items[i].value; split = i + 1; if (acc >= sum / 2) break; }
+    const left = items.slice(0, split), right = items.slice(split);
+    const frac = left.reduce((a, b) => a + b.value, 0) / sum;
+    if (horiz) {
+      layout(left, x, y, w * frac, h, !horiz);
+      layout(right, x + w * frac, y, w * (1 - frac), h, !horiz);
+    } else {
+      layout(left, x, y, w, h * frac, !horiz);
+      layout(right, x, y + h * frac, w, h * (1 - frac), !horiz);
+    }
+  }
+  layout(data, 2, 2, W - 4, H - 4, W >= H);
+  const cells = rects.map(function (rc, i) {
+    const pct = Math.round(rc.d.value / total * 100);
+    const big = rc.w > 70 && rc.h > 34;
+    return '<g' + clickAttrs(chart, rc.d.key) + dimIf(chart, rc.d.key) + '><title>' + esc(rc.d.key) + ': ' + fmtFull(rc.d.value) + ' (' + pct + '%)</title>' +
+      '<rect x="' + rc.x + '" y="' + rc.y + '" width="' + Math.max(rc.w - 3, 1) + '" height="' + Math.max(rc.h - 3, 1) + '" rx="5" fill="' + colorFor(i) + '"/>' +
+      (big ? '<text x="' + (rc.x + 9) + '" y="' + (rc.y + 18) + '" class="tm-lbl">' + esc(clip(rc.d.key, Math.max(6, Math.floor(rc.w / 7)))) + '</text>' +
+             '<text x="' + (rc.x + 9) + '" y="' + (rc.y + 34) + '" class="tm-val">' + fmt(rc.d.value) + ' · ' + pct + '%</text>' : "") +
+      '</g>';
+  }).join("");
+  return svgWrap(W, H, cells);
+}
+
+/* Funnel: values shown as progressively narrower bands, largest first. */
+function drawFunnel(chart, W, H) {
+  const data = aggregate(chart).filter((d) => d.value > 0);
+  if (!data.length) return '<div class="chart-empty">No data</div>';
+  data.sort((a, b) => b.value - a.value);
+  const max = data[0].value || 1;
+  const P = { t: 10, b: 10 }, rowH = (H - P.t - P.b) / data.length, cx = W / 2;
+  const bands = data.map(function (d, i) {
+    const w = Math.max((d.value / max) * (W * 0.8), 40);
+    const y = P.t + rowH * i;
+    return '<g' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + '><title>' + esc(d.key) + ': ' + fmtFull(d.value) + '</title>' +
+      '<rect x="' + (cx - w / 2) + '" y="' + (y + 3) + '" width="' + w + '" height="' + Math.max(rowH - 6, 4) + '" rx="4" fill="' + colorFor(i) + '"/>' +
+      '<text x="' + cx + '" y="' + (y + rowH / 2 + 4) + '" text-anchor="middle" class="fn-lbl">' + esc(clip(d.key, 22)) + ' · ' + fmt(d.value) + '</text></g>';
+  }).join("");
+  return svgWrap(W, H, bands);
+}
+
+/* Waterfall: how the categories add up to the total, step by step. */
+function drawWaterfall(chart, W, H) {
+  const data = aggregate(chart);
+  if (!data.length) return '<div class="chart-empty">No data</div>';
+  const total = data.reduce((a, b) => a + b.value, 0);
+  const steps = data.map((d) => ({ key: d.key, value: d.value })).concat([{ key: "Total", value: total, isTotal: true }]);
+  const P = { l: 56, r: 14, t: 20, b: steps.length > 7 ? 74 : 54 };
+  const max = niceMax(Math.max(total, ...data.map((d) => d.value), 0));
+  const iw = W - P.l - P.r, ih = H - P.t - P.b;
+  const step = iw / steps.length, bw = Math.min(step * 0.62, 56);
+  const grid = axisTicks(max).map(function (t) {
+    const y = P.t + ih - (t / max) * ih;
+    return '<line x1="' + P.l + '" y1="' + y + '" x2="' + (W - P.r) + '" y2="' + y + '" class="grid"/>' +
+           '<text x="' + (P.l - 8) + '" y="' + (y + 4) + '" text-anchor="end" class="axis-lbl">' + fmt(t) + '</text>';
+  }).join("");
+  let running = 0;
+  const bars = steps.map(function (s, i) {
+    const x = P.l + step * i + (step - bw) / 2;
+    const base = s.isTotal ? 0 : running;
+    const top = s.isTotal ? total : running + s.value;
+    if (!s.isTotal) running += s.value;
+    const y0 = P.t + ih - (max ? (base / max) * ih : 0);
+    const y1 = P.t + ih - (max ? (top / max) * ih : 0);
+    const fill = s.isTotal ? "var(--teal)" : (s.value >= 0 ? "var(--green)" : "var(--magenta)");
+    const connector = (!s.isTotal && i < steps.length - 1)
+      ? '<line x1="' + (x + bw) + '" y1="' + y1 + '" x2="' + (x + step) + '" y2="' + y1 + '" class="grid" stroke-dasharray="3 3"/>' : "";
+    const attrs = s.isTotal ? "" : clickAttrs(chart, s.key) + dimIf(chart, s.key);
+    return '<g' + attrs + '><title>' + esc(s.key) + ': ' + fmtFull(s.value) + '</title>' +
+      '<rect x="' + x + '" y="' + Math.min(y0, y1) + '" width="' + bw + '" height="' + Math.max(Math.abs(y0 - y1), 1) + '" rx="3" fill="' + fill + '"/>' +
+      '<text x="' + (x + bw / 2) + '" y="' + (Math.min(y0, y1) - 6) + '" text-anchor="middle" class="val-lbl">' + fmt(s.value) + '</text>' +
+      catLabel(x + bw / 2, H - P.b + 18, s.key, steps.length) + '</g>' + connector;
+  }).join("");
+  return svgWrap(W, H, grid + bars);
+}
+
+/* Combo: bars for the measure, plus a line for the row count per
+   category, so "how much" and "how many" sit on one chart. */
+function drawCombo(chart, W, H) {
+  const data = aggregate(chart);
+  if (!data.length) return '<div class="chart-empty">No data</div>';
+  const counts = aggregate({ groupBy: chart.groupBy, measure: null, agg: "count", sort: chart.sort, limit: chart.limit });
+  const countMap = {}; counts.forEach((c) => { countMap[c.key] = c.value; });
+  const P = { l: 56, r: 48, t: 20, b: data.length > 7 ? 74 : 54 };
+  const max = niceMax(Math.max.apply(null, data.map((d) => d.value).concat([0])));
+  const cmax = niceMax(Math.max.apply(null, data.map((d) => countMap[d.key] || 0).concat([1])));
+  const iw = W - P.l - P.r, ih = H - P.t - P.b;
+  const step = iw / data.length, bw = Math.min(step * 0.55, 50);
+  const grid = axisTicks(max).map(function (t) {
+    const y = P.t + ih - (t / max) * ih;
+    return '<line x1="' + P.l + '" y1="' + y + '" x2="' + (W - P.r) + '" y2="' + y + '" class="grid"/>' +
+           '<text x="' + (P.l - 8) + '" y="' + (y + 4) + '" text-anchor="end" class="axis-lbl">' + fmt(t) + '</text>';
+  }).join("");
+  const rightAxis = axisTicks(cmax).map(function (t) {
+    const y = P.t + ih - (t / cmax) * ih;
+    return '<text x="' + (W - P.r + 8) + '" y="' + (y + 4) + '" class="axis-lbl">' + fmt(t) + '</text>';
+  }).join("");
+  const bars = data.map(function (d, i) {
+    const h = max ? (d.value / max) * ih : 0;
+    const x = P.l + step * i + (step - bw) / 2;
+    const y = P.t + ih - h;
+    return '<g' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + '><title>' + esc(d.key) + ': ' + fmtFull(d.value) + ' · ' + (countMap[d.key] || 0) + ' rows</title>' +
+      '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + Math.max(h, 1) + '" rx="4" fill="' + colorFor(i) + '"/>' +
+      catLabel(x + bw / 2, H - P.b + 18, d.key, data.length) + '</g>';
+  }).join("");
+  const pts = data.map(function (d, i) {
+    const cx = P.l + step * i + step / 2;
+    const cy = P.t + ih - (cmax ? ((countMap[d.key] || 0) / cmax) * ih : 0);
+    return cx + "," + cy;
+  }).join(" ");
+  const line = '<polyline points="' + pts + '" fill="none" stroke="var(--orange)" stroke-width="2.5" stroke-linejoin="round"/>' +
+    data.map(function (d, i) {
+      const cx = P.l + step * i + step / 2;
+      const cy = P.t + ih - (cmax ? ((countMap[d.key] || 0) / cmax) * ih : 0);
+      return '<circle cx="' + cx + '" cy="' + cy + '" r="3.5" fill="var(--orange)"><title>' + esc(d.key) + ': ' + (countMap[d.key] || 0) + ' rows</title></circle>';
+    }).join("");
+  return svgWrap(W, H, grid + rightAxis + bars + line);
+}
+
+/* Heatmap table: a category × series matrix, each cell shaded by value. */
+function drawHeatmap(chart) {
+  if (!chart.series) return '<div class="chart-empty">Choose a “Split by” column in Edit</div>';
+  const res = aggregateStacked(chart);
+  if (!res.rows.length) return '<div class="chart-empty">No data</div>';
+  let vmax = 0;
+  res.rows.forEach((r) => r.parts.forEach((v) => { if (v > vmax) vmax = v; }));
+  vmax = vmax || 1;
+  const head = '<tr><th>' + esc(chart.groupBy) + '</th>' + res.seriesNames.map((s) => '<th>' + esc(clip(s, 16)) + '</th>').join("") + '<th>Total</th></tr>';
+  const body = res.rows.map(function (r) {
+    const cells = r.parts.map(function (v) {
+      const a = v > 0 ? 0.15 + 0.7 * (v / vmax) : 0;
+      return '<td class="hm-cell mono" style="background:rgba(12,175,191,' + a.toFixed(2) + ');">' + (v ? fmtFull(v) : "") + '</td>';
+    }).join("");
+    return '<tr class="clickable' + (state.filter && state.filter.col === chart.groupBy && state.filter.key === r.key ? ' active' : '') + '" data-fcol="' + esc(chart.groupBy) + '" data-fkey="' + esc(r.key) + '"><td>' + esc(r.key) + '</td>' + cells + '<td class="mono">' + fmtFull(r.total) + '</td></tr>';
+  }).join("");
+  return '<div class="tbl-scroll"><table class="v-table hm-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>';
 }
 
 function drawKpi(chart) {
   const vals = [];
   let count = 0;
-  for (const r of state.rows) {
+  for (const r of activeRows()) {
     if (chart.filterCol && String(r[chart.filterCol] || "").trim().toLowerCase() !== String(chart.filterValue || "").trim().toLowerCase()) continue;
     count++;
     if (chart.measure) { const n = toNumber(r[chart.measure]); if (n !== null) vals.push(n); }
@@ -769,6 +996,12 @@ function drawChart(chart) {
     case "donut": return drawPieDonut(chart, W, H, true);
     case "pie": return drawPieDonut(chart, W, H, false);
     case "stacked": return drawStacked(chart, W, H);
+    case "gauge": return drawGauge(chart, chart.width === "quarter" ? 220 : W, chart.width === "quarter" ? 150 : 220);
+    case "treemap": return drawTreemap(chart, W, H);
+    case "funnel": return drawFunnel(chart, W, H);
+    case "waterfall": return drawWaterfall(chart, W, H);
+    case "combo": return drawCombo(chart, W, H);
+    case "heatmap": return drawHeatmap(chart);
     case "progress": return drawProgress(chart);
     case "table": return drawTable(chart);
     default: return '<div class="chart-empty">Unknown chart type</div>';
@@ -827,7 +1060,41 @@ function renderCharts() {
   Array.prototype.forEach.call(grid.querySelectorAll("button.tool"), function (b) {
     b.addEventListener("click", function () { chartAction(b.getAttribute("data-act"), b.getAttribute("data-id")); });
   });
+
+  // Cross-filter: clicking any tagged element filters every chart.
+  // Clicking the already-active one clears the filter.
+  Array.prototype.forEach.call(grid.querySelectorAll("[data-fkey]"), function (el) {
+    el.addEventListener("click", function (e) {
+      e.stopPropagation();
+      const col = el.getAttribute("data-fcol"), key = el.getAttribute("data-fkey");
+      if (state.filter && state.filter.col === col && state.filter.key === key) state.filter = null;
+      else state.filter = { col: col, key: key };
+      renderCharts();
+    });
+  });
+
+  renderFilterBar();
   saveLayout();
+}
+
+/* A slim banner above the charts showing the active filter, with a
+   clear button — so it's never a mystery why numbers changed. */
+function renderFilterBar() {
+  const grid = document.getElementById("chart-grid");
+  if (!grid) return;
+  let bar = document.getElementById("filter-bar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "filter-bar";
+    grid.parentNode.insertBefore(bar, grid);
+  }
+  if (!state.filter) { bar.style.display = "none"; bar.innerHTML = ""; return; }
+  const n = activeRows().length;
+  bar.style.display = "";
+  bar.innerHTML = '<span class="fb-label">Filtered to</span> <b>' + esc(state.filter.col) + '</b> = <b>' + esc(state.filter.key) + '</b>' +
+    ' <span class="fb-count mono">' + n + ' of ' + state.rows.length + ' rows</span>' +
+    ' <button class="btn ghost fb-clear" id="filter-clear">Clear filter</button>';
+  document.getElementById("filter-clear").addEventListener("click", function () { state.filter = null; renderCharts(); });
 }
 
 function chartAction(act, id) {
@@ -880,6 +1147,7 @@ function openEditor(id) {
       '<option value="half"' + sel("half", c.width) + '>Medium — half width</option>' +
       '<option value="full"' + sel("full", c.width) + '>Large — full width</option></select></label>' +
     '<label class="fld"><span>Show top</span><input id="f-limit" type="number" min="1" max="50" value="' + (c.limit || 12) + '" /></label>' +
+    '<label class="fld"><span>Target <em>(gauge only, blank = total)</em></span><input id="f-target" type="number" value="' + (c.target !== undefined && c.target !== null ? esc(c.target) : "") + '" placeholder="e.g. 100" /></label>' +
     '<label class="fld"><span>Sort</span><select id="f-sort">' +
       '<option value="desc"' + sel("desc", c.sort) + '>Highest first</option>' +
       '<option value="asc"' + sel("asc", c.sort) + '>Lowest first</option>' +
@@ -902,6 +1170,7 @@ function saveEditor() {
     width: g("f-width"),
     limit: Math.max(1, parseInt(g("f-limit"), 10) || 12),
     sort: g("f-sort"),
+    target: g("f-target") === "" ? null : toNumber(g("f-target")),
   };
   const isDeadlineType = chart.type === "countdown" || chart.type === "deadlines";
   if (chart.agg !== "count" && !chart.measure && !isDeadlineType) {
@@ -912,12 +1181,12 @@ function saveEditor() {
     alert('Choose a date column under "Split by / Date column" for this chart type.');
     return;
   }
-  if (!isDeadlineType && chart.type !== "kpi" && !chart.groupBy) {
+  if (!isDeadlineType && chart.type !== "kpi" && chart.type !== "gauge" && !chart.groupBy) {
     alert('Choose a column under "Group by" for this chart type.');
     return;
   }
   if (!chart.title) {
-    chart.title = chart.type === "kpi" ? measureLabel(chart)
+    chart.title = (chart.type === "kpi" || chart.type === "gauge") ? measureLabel(chart)
       : chart.type === "countdown" ? "Next " + chart.series
       : chart.type === "deadlines" ? "Upcoming: " + chart.series
       : (chart.agg === "count" ? "Count" : (chart.measure || "Value")) + " by " + chart.groupBy;
@@ -1017,7 +1286,41 @@ function ingestRows(rows, opts) {
 /* ---------- shared UI wiring ----------
    Everything both pages share: the editor modal, add/reset/print
    buttons, and the editable dashboard title.                      */
+/* Styles for the engine's own components (cross-filter, new visuals).
+   Injected once so every page using engine.js gets them automatically. */
+function injectEngineStyles() {
+  if (document.getElementById("engine-styles")) return;
+  const css = `
+    .clickable{ cursor:pointer; transition:opacity .15s, filter .15s; }
+    .clickable:hover{ filter:brightness(1.15); }
+    g.clickable.active rect, path.clickable.active{ stroke:var(--ink); stroke-width:2; }
+    tr.clickable.active td{ background:rgba(12,175,191,0.14); }
+    .prog-row.clickable.active .prog-name{ color:var(--teal); font-weight:600; }
+    .prog-row.dimmed-row{ opacity:.35; }
+    #filter-bar{
+      display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+      background:var(--bg-panel); border:1px solid var(--teal); border-radius:12px;
+      padding:10px 14px; margin-bottom:16px; font-size:13px;
+    }
+    #filter-bar .fb-label{ color:var(--ink-dim); }
+    #filter-bar b{ color:var(--teal); }
+    #filter-bar .fb-count{ color:var(--ink-faint); font-size:11.5px; margin-left:4px; }
+    #filter-bar .fb-clear{ margin-left:auto; padding:6px 12px; font-size:12px; }
+    .tm-lbl{ fill:#fff; font-size:12px; font-weight:600; font-family:'Inter',sans-serif; }
+    .tm-val{ fill:rgba(255,255,255,0.85); font-size:10.5px; font-family:'IBM Plex Mono',monospace; }
+    .fn-lbl{ fill:#fff; font-size:11.5px; font-weight:500; font-family:'Inter',sans-serif; }
+    .hm-table td.hm-cell{ text-align:center; color:var(--ink); }
+    .hm-table th{ text-align:center; }
+    .hm-table th:first-child, .hm-table td:first-child{ text-align:left; }
+  `;
+  const style = document.createElement("style");
+  style.id = "engine-styles";
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+
 function initEditorUI() {
+  injectEngineStyles();
   const add = document.getElementById("add-chart-btn");
   if (add) add.addEventListener("click", function () { openEditor(null); });
 
