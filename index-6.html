@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SEVEN Critical Path</title>
+<link rel="icon" href="logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="seven.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  /* --------------------------------------------------------------
+     Critical Path only. Everything shared lives in seven.css.
+     -------------------------------------------------------------- */
+
+  /* countdown -------------------------------------------------- */
+  .opening-chip{
+    display:flex; align-items:center; gap:12px;
+    background:var(--surface); border:1px solid var(--line);
+    border-radius:var(--radius); padding:6px 14px 6px 6px;
+  }
+  .opening-chip .countdown-num{
+    font-family:var(--mono); font-weight:600; font-size:17px; letter-spacing:-0.02em;
+    background:var(--navy); color:#fff; border-radius:var(--radius-sm);
+    padding:6px 11px; min-width:46px; text-align:center;
+  }
+  .opening-chip .label{
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-3);
+  }
+  .opening-chip .date{ font-size:12.5px; color:var(--ink); font-weight:500; }
+
+  /* empty state is itself the drop target on this page ---------- */
+  #empty-state{
+    display:block; max-width:none; text-align:center;
+    border:1px dashed var(--line-strong); border-radius:var(--radius);
+    background:var(--surface); padding:64px 24px; margin-bottom:26px;
+  }
+  #empty-state.drag{ border-style:solid; border-color:var(--cyan); background:var(--cyan-soft); }
+  #empty-state .drop-mark{ height:54px; width:auto; margin:0 auto 22px; display:block; }
+
+  /* section headings ------------------------------------------- */
+  .sec-head{
+    display:flex; align-items:baseline; justify-content:space-between;
+    gap:12px; flex-wrap:wrap; margin-bottom:16px;
+  }
+  .sec-head h3{ font-size:14px; font-weight:600; letter-spacing:-0.01em; }
+  .panel{
+    background:var(--surface); border:1px solid var(--line);
+    border-radius:var(--radius); box-shadow:var(--shadow); padding:22px;
+  }
+
+  /* progress to opening ---------------------------------------- */
+  .track-wrap{
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:24px 26px; margin-bottom:18px;
+  }
+  .runway-group{ margin-bottom:24px; }
+  .runway-row{ margin-bottom:14px; }
+  .runway-label{
+    display:flex; justify-content:space-between; align-items:baseline;
+    font-size:12px; color:var(--ink-2); margin-bottom:6px;
+  }
+  .runway-pct{ color:var(--ink); font-weight:600; font-size:13px; }
+  .runway-bar{ position:relative; height:8px; border-radius:99px; background:var(--surface-sunk); overflow:hidden; }
+  .runway-fill{ height:100%; border-radius:99px; transition:width .35s ease; }
+  .runway-fill-started{ background:var(--cyan); }
+  .runway-fill-complete{ background:var(--green); }
+  .runway-ends{
+    display:flex; justify-content:space-between; font-family:var(--mono);
+    font-size:10.5px; color:var(--ink-3); margin-top:12px;
+    padding-top:10px; border-top:1px solid var(--line);
+  }
+  .runway-flag{ display:flex; align-items:center; gap:7px; color:var(--ink-2); }
+  .runway-flag svg{ color:var(--magenta); }
+
+  /* department readiness --------------------------------------- */
+  .track-nodes{ display:grid; grid-template-columns:repeat(auto-fill, minmax(196px, 1fr)); gap:10px; }
+  .track-node{
+    display:flex; align-items:center; gap:12px;
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-sm);
+    padding:11px 13px; border-left:3px solid var(--node-color, var(--cyan));
+  }
+  .track-node.complete{ border-left-color:var(--green); }
+  .track-node.risk{ border-left-color:var(--magenta); }
+  .track-node .ring{ position:relative; width:44px; height:44px; flex:none; }
+  .track-node .ring svg{ transform:rotate(-90deg); display:block; }
+  .track-node .ring-label{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-family:var(--mono); font-weight:500; font-size:11.5px; color:var(--ink);
+  }
+  .track-node .meta{ min-width:0; }
+  .track-node .name{ font-size:12.5px; font-weight:500; line-height:1.3; }
+  .track-node .pct{
+    font-family:var(--mono); font-size:9.5px; color:var(--ink-3);
+    margin-top:4px; line-height:1.5;
+  }
+  .track-node .pct span{ display:block; white-space:nowrap; }
+  .track-node .risk-tag{
+    display:inline-block; margin-top:5px; font-family:var(--mono);
+    font-size:9px; font-weight:500; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--magenta); background:var(--magenta-soft);
+    padding:2px 6px; border-radius:3px;
+  }
+
+  /* KPI row ---------------------------------------------------- */
+  .kpi-grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:18px; }
+  .kpi-card{
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:16px 16px 14px;
+    border-top:2px solid var(--accent, var(--cyan));
+  }
+  .kpi-card .icon{ color:var(--accent, var(--cyan)); height:16px; margin-bottom:12px; }
+  .kpi-card .label{
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--ink-3); margin-bottom:6px;
+  }
+  .kpi-card .value{ font-size:28px; font-weight:500; letter-spacing:-0.03em; line-height:1.1; }
+
+  /* stacked bars ----------------------------------------------- */
+  .stack{ display:flex; flex-direction:column; gap:18px; margin-bottom:18px; }
+  #bar-chart{ display:flex; align-items:flex-end; gap:14px; height:224px; padding-top:8px; }
+  .bar-col{ flex:1; display:flex; flex-direction:column; align-items:center; height:100%; justify-content:flex-end; min-width:0; }
+  .bar-stack{
+    width:100%; max-width:44px; display:flex; flex-direction:column;
+    justify-content:flex-end; gap:2px; border-radius:3px 3px 0 0; overflow:hidden;
+  }
+  .bar-seg{ width:100%; }
+  .bar-col .bar-total{ font-size:12.5px; font-weight:500; color:var(--ink); margin-bottom:5px; }
+  .bar-col .bar-label{ margin-top:10px; font-size:11px; color:var(--ink-2); text-align:center; line-height:1.3; }
+  .bar-col .bar-sub{ font-size:10px; color:var(--ink-3); margin-top:2px; }
+  .legend-row{ display:flex; gap:16px; margin-top:18px; padding-top:14px; border-top:1px solid var(--line); flex-wrap:wrap; }
+  .legend-item{ display:flex; align-items:center; gap:7px; font-size:11.5px; color:var(--ink-2); }
+  .legend-swatch{ width:9px; height:9px; border-radius:2px; flex:none; }
+
+  /* timeline --------------------------------------------------- */
+  .tl-row{ display:grid; grid-template-columns:150px 1fr; align-items:center; gap:16px; margin-bottom:9px; }
+  .tl-name{ font-size:12px; color:var(--ink-2); }
+  .tl-track{ position:relative; height:22px; background:var(--surface-sunk); border-radius:3px; overflow:hidden; }
+  .tl-bar{ position:absolute; top:0; bottom:0; border-radius:3px; }
+  .tl-scale{ display:grid; grid-template-columns:150px 1fr; margin-top:10px; gap:16px; }
+  .tl-scale-labels{
+    display:flex; justify-content:space-between; font-family:var(--mono);
+    font-size:10px; color:var(--ink-3); padding-top:8px; border-top:1px solid var(--line);
+  }
+  .tl-open{ position:absolute; top:0; bottom:0; width:2px; background:var(--magenta); }
+
+  /* donuts ----------------------------------------------------- */
+  .row-3{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:18px; }
+  .donut-panel{ display:flex; flex-direction:column; align-items:center; text-align:center; }
+  .donut-panel .sec-head{ width:100%; justify-content:center; }
+  .donut-wrap{ position:relative; width:146px; height:146px; margin:2px 0 14px; }
+  .donut-wrap svg{ transform:rotate(-90deg); }
+  .donut-center{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .donut-center .n{ font-family:var(--mono); font-size:24px; font-weight:500; letter-spacing:-0.02em; }
+  .donut-center .l{
+    font-family:var(--mono); font-size:9px; color:var(--ink-3);
+    text-transform:uppercase; letter-spacing:.12em; margin-top:2px;
+  }
+  .donut-panel .legend-row{ justify-content:center; border-top:none; padding-top:0; margin-top:0; }
+
+  /* readiness matrix ------------------------------------------- */
+  .rm-scroll{ overflow-x:auto; }
+  table.rm-table{ border-collapse:collapse; width:100%; min-width:560px; }
+  table.rm-table th{
+    font-family:var(--mono); font-size:9.5px; text-transform:uppercase; letter-spacing:.12em;
+    color:var(--ink-3); font-weight:500; text-align:center; padding:8px 10px;
+    border-bottom:1px solid var(--line-strong); white-space:nowrap;
+  }
+  table.rm-table th.rm-corner{ text-align:left; }
+  table.rm-table th.rm-overall{ color:var(--ink-2); }
+  table.rm-table td.rm-dept{ font-size:12.5px; padding:8px 10px; white-space:nowrap; border-bottom:1px solid var(--line); }
+  table.rm-table td.rm-cell{ text-align:center; padding:6px 8px; border-bottom:1px solid var(--line); }
+  table.rm-table td.rm-empty{ color:var(--ink-3); }
+  table.rm-table tr:last-child td{ border-bottom:none; }
+  .rm-pill{ display:inline-block; min-width:44px; padding:3px 8px; border-radius:3px; font-size:11px; font-weight:500; }
+
+  input#file-input{ display:none; }
+
+  @media (max-width:1100px){
+    .kpi-grid{ grid-template-columns:repeat(3,1fr); }
+    .row-3{ grid-template-columns:1fr; }
+  }
+  @media (max-width:760px){
+    /* 7 departments will not fit a phone; let the row scroll instead of
+       crushing the labels together. */
+    #bar-chart{ overflow-x:auto; padding-bottom:6px; }
+    .bar-col{ flex:1 0 60px; }
+  }
+  @media (max-width:640px){
+    .kpi-grid{ grid-template-columns:repeat(2,1fr); }
+    .track-wrap{ padding:18px 16px; }
+    .track-nodes{ grid-template-columns:1fr; }
+    .tl-row, .tl-scale{ grid-template-columns:96px 1fr; gap:10px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="brand-rule"></div>
+
+<header class="top">
+  <div class="brand">
+    <img src="logo.png" alt="SEVEN" />
+    <span class="divider"></span>
+    <div class="name"><b>SEVEN</b> CRITICAL PATH</div>
+  </div>
+  <div class="top-actions">
+    <div class="opening-chip">
+      <span class="countdown-num" id="countdown-num">&mdash;</span>
+      <div>
+        <div class="label">Days to opening</div>
+        <div class="date mono" id="opening-date-label">&mdash;</div>
+      </div>
+    </div>
+    <button class="btn ghost" id="reset-btn" style="display:none;">Clear data</button>
+    <a class="btn ghost" href="home.html">All dashboards</a>
+    <button class="btn primary" id="upload-btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M7.5 8.5L12 4l4.5 4.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+      Update from Excel
+    </button>
+    <input type="file" id="file-input" accept=".xlsx,.xls" />
+  </div>
+</header>
+
+<main>
+
+  <div id="empty-state">
+    <img class="drop-mark" src="logo.png" alt="" />
+    <h2 class="display">Drop in your Critical Path file</h2>
+    <p>Upload the project's Excel tracker to fill every chart on this page: task counts, department progress, delays and the track to opening day.</p>
+    <button class="btn primary" id="empty-upload-btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M7.5 8.5L12 4l4.5 4.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+      Upload Excel file
+    </button>
+  </div>
+
+  <div id="dashboard" style="display:none;">
+
+    <div class="track-wrap">
+      <div class="sec-head">
+        <h3 class="display">Critical path to opening</h3>
+        <span class="eyebrow">Readiness by department</span>
+      </div>
+
+      <div class="runway-group">
+        <div class="runway-row">
+          <div class="runway-label">Overall progress <span class="runway-pct mono" id="runway-started-pct">0%</span></div>
+          <div class="runway-bar"><div class="runway-fill runway-fill-started" id="track-fill-started" style="width:0%"></div></div>
+        </div>
+        <div class="runway-row">
+          <div class="runway-label">Completed <span class="runway-pct mono" id="runway-complete-pct">0%</span></div>
+          <div class="runway-bar"><div class="runway-fill runway-fill-complete" id="track-fill-complete" style="width:0%"></div></div>
+        </div>
+        <div class="runway-ends">
+          <span id="runway-start">Today</span>
+          <span class="runway-flag">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4"/><path d="M5 5h13l-2.6 4L18 13H5z"/></svg>
+            <span id="runway-end">Opening</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="track-nodes" id="track-nodes"></div>
+    </div>
+
+    <div class="kpi-grid" id="kpi-grid"></div>
+
+    <div class="stack">
+
+      <div class="panel">
+        <div class="sec-head">
+          <h3 class="display">Tasks per department</h3>
+          <span class="eyebrow">Each column is a full 0&ndash;100% scale</span>
+        </div>
+        <div id="bar-chart"></div>
+        <div class="legend-row">
+          <div class="legend-item"><span class="legend-swatch" style="background:var(--st-done)"></span>Complete</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:var(--st-active-alt)"></span>In progress</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:var(--st-pending)"></span>Pending</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="sec-head">
+          <h3 class="display">Department timeline</h3>
+          <span class="eyebrow">Magenta line marks opening day</span>
+        </div>
+        <div id="timeline"></div>
+      </div>
+
+      <div class="row-3" style="margin-bottom:0;">
+        <div class="panel donut-panel">
+          <div class="sec-head"><h3 class="display">Status overview</h3></div>
+          <div class="donut-wrap"><svg viewBox="0 0 120 120" id="donut-status"></svg><div class="donut-center"><div class="n" id="donut-status-n">0</div><div class="l">Total items</div></div></div>
+          <div class="legend-row" id="donut-status-legend"></div>
+        </div>
+        <div class="panel donut-panel">
+          <div class="sec-head"><h3 class="display">Start-time status</h3></div>
+          <div class="donut-wrap"><svg viewBox="0 0 120 120" id="donut-start"></svg><div class="donut-center"><div class="n" id="donut-start-n">0</div><div class="l">Tasks</div></div></div>
+          <div class="legend-row" id="donut-start-legend"></div>
+        </div>
+        <div class="panel donut-panel">
+          <div class="sec-head"><h3 class="display">Completion status</h3></div>
+          <div class="donut-wrap"><svg viewBox="0 0 120 120" id="donut-completion"></svg><div class="donut-center"><div class="n" id="donut-completion-n">0</div><div class="l">Tasks</div></div></div>
+          <div class="legend-row" id="donut-completion-legend"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="sec-head">
+          <h3 class="display">Department readiness per owner</h3>
+          <span class="eyebrow">% of items started &middot; hover for counts</span>
+        </div>
+        <div id="readiness-matrix"></div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <footer class="site-footer">Runs entirely in your browser &mdash; your file never leaves your computer.</footer>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
