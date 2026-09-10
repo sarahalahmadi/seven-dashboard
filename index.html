@@ -32,14 +32,8 @@
   }
   .opening-chip .date{ font-size:12.5px; color:var(--ink); font-weight:500; }
 
-  /* empty state is itself the drop target on this page ---------- */
-  #empty-state{
-    display:block; max-width:none; text-align:center;
-    border:1px dashed var(--line-strong); border-radius:var(--radius);
-    background:var(--surface); padding:64px 24px; margin-bottom:26px;
-  }
-  #empty-state.drag{ border-style:solid; border-color:var(--cyan); background:var(--cyan-soft); }
-  #empty-state .drop-mark{ height:54px; width:auto; margin:0 auto 22px; display:block; }
+  /* the whole page is the drop target here, so the panel itself is plain */
+  #empty-state{ display:block; }
 
   /* section headings ------------------------------------------- */
   .sec-head{
@@ -208,11 +202,11 @@
     <div class="name"><b>SEVEN</b> CRITICAL PATH</div>
   </div>
   <div class="top-actions">
-    <div class="opening-chip">
-      <span class="countdown-num" id="countdown-num">&mdash;</span>
+    <div class="opening-chip" id="opening-chip" style="display:none">
+      <span class="countdown-num" id="countdown-num"></span>
       <div>
         <div class="label">Days to opening</div>
-        <div class="date mono" id="opening-date-label">&mdash;</div>
+        <div class="date mono" id="opening-date-label"></div>
       </div>
     </div>
     <button class="btn ghost" id="reset-btn" style="display:none;">Clear data</button>
@@ -228,13 +222,25 @@
 <main>
 
   <div id="empty-state">
-    <img class="drop-mark" src="logo.png" alt="" />
-    <h2 class="display">Drop in your Critical Path file</h2>
-    <p>Upload the project's Excel tracker to fill every chart on this page: task counts, department progress, delays and the track to opening day.</p>
-    <button class="btn primary" id="empty-upload-btn">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M7.5 8.5L12 4l4.5 4.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-      Upload Excel file
-    </button>
+    <div class="starter">
+      <div class="starter-main">
+        <span class="eyebrow">Start here</span>
+        <h2 class="display">Drop in your Critical Path file</h2>
+        <p>The project's Excel tracker. It reads the &ldquo;Critical Path&rdquo; tab and fills the whole page from it.</p>
+        <button class="btn primary" id="empty-upload-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M7.5 8.5L12 4l4.5 4.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Upload Excel file</button>
+        <div class="starter-drag-note">Or drag the file anywhere on this page.</div>
+      </div>
+      <div class="starter-side" style="--accent:var(--magenta)">
+        <span class="eyebrow">What you get</span>
+        <ul>
+          <li>Progress by department, with the ones at risk flagged</li>
+          <li>A timeline running through to opening day</li>
+          <li>Started, delayed and overdue counts</li>
+          <li>Readiness by owning team</li>
+          <li>A live countdown to opening</li>
+        </ul>
+      </div>
+    </div>
   </div>
 
   <div id="dashboard" style="display:none;">
@@ -273,7 +279,7 @@
       <div class="panel">
         <div class="sec-head">
           <h3 class="display">Tasks per department</h3>
-          <span class="eyebrow">Each column is a full 0&ndash;100% scale</span>
+          <span class="eyebrow">Each column is a full 0 to 100% scale</span>
         </div>
         <div id="bar-chart"></div>
         <div class="legend-row">
@@ -312,7 +318,7 @@
       <div class="panel">
         <div class="sec-head">
           <h3 class="display">Department readiness per owner</h3>
-          <span class="eyebrow">% of items started &middot; hover for counts</span>
+          <span class="eyebrow">% of items started, hover for counts</span>
         </div>
         <div id="readiness-matrix"></div>
       </div>
@@ -321,9 +327,7 @@
 
   </div>
 
-  <footer class="site-footer">Runs entirely in your browser &mdash; your file never leaves your computer.</footer>
-
-</main>
+  </main>
 
 <script src="app.js"></script>
 </body>

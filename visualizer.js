@@ -1,5 +1,5 @@
 /* ============================================================
-   SEVEN — Visualizer (file upload page)
+   SEVEN Visualizer (file upload page)
    Reads an uploaded Excel/CSV, hands the rows to the shared
    dashboard engine (engine.js), which does the rest.
    ============================================================ */
@@ -54,7 +54,7 @@ function handleFile(file) {
     try {
       loadWorkbook(XLSX.read(new Uint8Array(e.target.result), { type: "array", cellDates: false }));
     } catch (err) {
-      alert("Sorry — I couldn't read that file. Make sure it's a valid .xlsx, .xls, or .csv.\n\n" + err.message);
+      alert("Sorry, I couldn't read that file. Make sure it's a valid .xlsx, .xls, or .csv.\n\n" + err.message);
     }
   };
   reader.readAsArrayBuffer(file);

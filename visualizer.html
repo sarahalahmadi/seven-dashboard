@@ -30,15 +30,27 @@
 </header>
 
 <main>
-  <div id="empty-state">
-    <div id="drop-zone">
-      <img class="drop-mark" src="logo.png" alt="" />
-      <h2 class="display">Drop any spreadsheet here</h2>
-      <p>Excel or CSV. You get a starting dashboard you can edit.</p>
-      <button class="btn primary" onclick="document.getElementById('file-input').click()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M7.5 8.5L12 4l4.5 4.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Choose a file</button>
+    <div id="empty-state">
+      <div id="drop-zone" class="starter">
+        <div class="starter-main">
+          <span class="eyebrow">Start here</span>
+          <h2 class="display">Open any spreadsheet</h2>
+          <p>Excel or CSV. You get a starting dashboard read from your own columns, and every chart on it can be edited.</p>
+          <button class="btn primary" onclick="document.getElementById('file-input').click()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M7.5 8.5L12 4l4.5 4.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Choose a file</button>
+          <div class="starter-drag-note">Or drag it anywhere on this page. Works best with one header row and one record per row.</div>
+        </div>
+        <div class="starter-side" style="--accent:var(--amber)">
+          <span class="eyebrow">What you get</span>
+          <ul>
+            <li>Headline totals pulled from your numbers</li>
+            <li>What the numbers actually say, in plain language</li>
+            <li>Charts you can edit, reorder or replace</li>
+            <li>Click any bar to filter the whole board</li>
+            <li>Print or save the whole board as a PDF</li>
+          </ul>
+        </div>
+      </div>
     </div>
-    <div class="hint">Your file stays on your computer. Works best with one header row and one record per row.</div>
-  </div>
 
   <div id="board" style="display:none">
     <div class="title-row">
@@ -46,7 +58,7 @@
     </div>
 
     <div class="file-bar">
-      <div class="file-chip"><span class="dot"></span><span id="file-name" class="mono">&mdash;</span></div>
+      <div class="file-chip"><span class="dot"></span><span id="file-name" class="mono"></span></div>
       <div class="ctrl-group" id="sheet-wrap" style="display:none">
         <label>Sheet</label>
         <select class="pill" id="sheet-select"></select>

@@ -1,5 +1,5 @@
 /* ============================================================
-   SEVEN — Discovery Dashboard (file upload page)
+   SEVEN Discovery Dashboard (file upload page)
    Reads an uploaded Excel/CSV, hands the rows to the shared
    dashboard engine (engine.js). If the file's columns match a
    known shape (see TEMPLATES in engine.js), a curated template
@@ -70,7 +70,7 @@ function handleFile(file) {
     try {
       loadWorkbook(XLSX.read(new Uint8Array(e.target.result), { type: "array", cellDates: false }));
     } catch (err) {
-      alert("Sorry — I couldn't read that file. Make sure it's a valid .xlsx, .xls, or .csv.\n\n" + err.message);
+      alert("Sorry, I couldn't read that file. Make sure it's a valid .xlsx, .xls, or .csv.\n\n" + err.message);
     }
   };
   reader.readAsArrayBuffer(file);

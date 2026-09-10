@@ -1,5 +1,5 @@
 /* ============================================================
-   SEVEN — Dashboard Engine (shared)
+   SEVEN Dashboard Engine (shared)
    Column typing, aggregation, chart drawing, the chart editor,
    and layout persistence. Used by BOTH the Visualizer (file
    upload) and the Live page (SeaTable). Pages supply the data;
@@ -11,7 +11,7 @@
 const PALETTE = ["#0092AC", "#D6004E", "#C98A00", "#00874A", "#1E5A99", "#E4572E", "#7A4DA0", "#0E6E7F", "#A03C6B", "#6E7B12"];
 const colorFor = (i) => PALETTE[i % PALETTE.length];
 /* Single-series magnitude charts (vertical bars, horizontal bars, progress
-   rows) use ONE hue. Colour there would encode rank, not identity — the
+   rows) use ONE hue. Colour there would encode rank, not identity. The
    categorical palette is reserved for charts where each mark is a category. */
 const SERIES_HUE = PALETTE[0];
 
@@ -56,7 +56,7 @@ const state = {
   editingId: null,
   activeTemplate: null,
   // Cross-filter: click a bar, slice, or row on any chart and every other
-  // chart narrows to match — the interaction that makes a dashboard feel
+  // chart narrows to match. This is the interaction that makes a dashboard feel
   // like Power BI rather than a static report. null = no filter.
   filter: null,   // { col, key }
   profile: {},    // per-column statistics from the analysis engine
@@ -73,12 +73,12 @@ function activeRows() {
 
 /* ---------- helpers ---------- */
 const fmt = (n) => {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
+  if (n === null || n === undefined || Number.isNaN(n)) return "";
   if (Math.abs(n) >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
   if (Math.abs(n) >= 1000) return Math.round(n).toLocaleString();
   return (Math.round(n * 100) / 100).toLocaleString();
 };
-const fmtFull = (n) => (n === null || n === undefined || Number.isNaN(n)) ? "—" : (Math.round(n * 100) / 100).toLocaleString();
+const fmtFull = (n) => (n === null || n === undefined || Number.isNaN(n)) ? "" : (Math.round(n * 100) / 100).toLocaleString();
 const esc = (s) => String(s === null || s === undefined ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const uid = () => "c" + Math.random().toString(36).slice(2, 9);
 const clip = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
@@ -113,7 +113,7 @@ function daysBetween(from, to) {
 }
 
 /* Turns text like "Daily-Weekly-Monthly-Annual" into a day count, using
-   the LONGEST cycle mentioned (that's the one worth a countdown — daily
+   the LONGEST cycle mentioned (that's the one worth a countdown; daily
    or weekly upkeep isn't a "deadline" the way an annual recert is).
    Typo-tolerant ("Quartely") since real-world sheets aren't always clean. */
 function frequencyToDays(text) {
@@ -135,7 +135,7 @@ function isTruthyFlag(v) {
 /* When a file has no real due-date column but does have a maintenance or
    certification FREQUENCY column ("Daily-Weekly-Monthly-Annual"), build
    a rough estimated due date from it, so the countdown has something to
-   show. This is a guess, not a confirmed date — the column is named and
+   show. This is a guess, not a confirmed date. The column is named and
    labelled "(Estimated)" everywhere it appears so nobody mistakes it for
    verified compliance data. Skipped entirely if a real deadline column
    already exists. */
@@ -198,7 +198,7 @@ function looksLikeDateString(s) {
 
 function detectType(values, header) {
   let nums = 0, dates = 0, nonEmpty = 0;
-  const looksDatey = header && /date|day|start|end|deadline|due|opening|month|year|expiry|expire|renew|recert|valid|inspection|audit|issued/i.test(header);
+  const looksDatey = header && /date|day|start|end|deadline|due|opening|month|year|expiry|expire|renew|recert|valid|inspection|audit|issued|service|serviced|maintenance|calibrat|last |next |completed|scheduled|delivered|delivery|created|updated|modified|since|until/i.test(header);
   for (const v of values) {
     if (v === null || v === undefined || v === "") continue;
     nonEmpty++;
@@ -209,7 +209,7 @@ function detectType(values, header) {
     const s = String(v).trim();
     if (s !== "" && !isNaN(Number(s.replace(/,/g, "")))) { nums++; continue; }
     // Date.parse is dangerously lenient (it happily reads "RK-2201" as a
-    // date) — only trust it once the string actually looks date-shaped.
+    // date), so only trust it once the string actually looks date-shaped.
     if (looksLikeDateString(s)) {
       const d = Date.parse(s);
       if (!isNaN(d)) dates++;
@@ -217,13 +217,26 @@ function detectType(values, header) {
   }
   if (nonEmpty === 0) return "empty";
   if (dates / nonEmpty >= 0.6) return "date";
-  if (nums / nonEmpty >= 0.8) return "number";
+  if (nums / nonEmpty >= 0.8) {
+    // A column of Excel date serials whose header we didn't recognise would
+    // otherwise be summed into a nonsense total ("Total Last Service: 8.3M").
+    // Whole numbers, all inside the 1954-2064 serial window, and not named
+    // like money, is a date column no matter what the header says.
+    const moneyish = header && /price|cost|amount|sales|revenue|value|salary|budget|spend|fee|total|qty|quantity|units|count|score|weight|size|id\b/i.test(header);
+    if (!moneyish) {
+      const numeric = values.filter((v) => typeof v === "number" && isFinite(v));
+      const inWindow = numeric.filter((v) => Number.isInteger(v) && v > 20000 && v < 60000);
+      if (numeric.length >= 5 && inWindow.length === numeric.length &&
+          new Set(inWindow).size >= Math.min(8, numeric.length)) return "date";
+    }
+    return "number";
+  }
   return "text";
 }
 
 /* ---------- auto-generated starting dashboard ---------- */
 /* ============================================================
-   Templates — curated chart sets for file shapes we recognize,
+   Templates: curated chart sets for file shapes we recognize,
    instead of leaving everything to the generic auto-guess.
    Each template has a signature test and a builder. The first
    match wins; if nothing matches, autoCharts() below is the
@@ -273,7 +286,7 @@ const TEMPLATES = [
       if (mfgCol && tiersCol) {
         charts.push({ id: uid(), type: "hbar", title: tiersCol.name + " by " + mfgCol.name, agg: "sum", measure: tiersCol.name, groupBy: mfgCol.name, width: "half", limit: 10, sort: "desc" });
       }
-      // A certification-flavored maintenance sheet — surface the extra
+      // A certification-flavored maintenance sheet, so surface the extra
       // certificate fields rather than leaving them unused.
       if (certTypeCol) {
         charts.push({ id: uid(), type: "donut", title: "Breakdown by " + certTypeCol.name, agg: "count", measure: null, groupBy: certTypeCol.name, width: "half", limit: 8, sort: "desc" });
@@ -414,7 +427,7 @@ function autoCharts() {
   const labelCol = textCols[0] ? textCols[0].name : null;
   const mainGroup = groupCandidates[0] ? groupCandidates[0].name : labelCol;
   const secondGroup = groupCandidates.find((c) => c.name !== mainGroup);
-  // A column with 2–4 distinct values (Yes/No, status flags) is the clearest possible donut.
+  // A column with 2 to 4 distinct values (Yes/No, status flags) is the clearest possible donut.
   const flagCol = textCols.find((c) => c.distinct >= 2 && c.distinct <= 4 && (c.filled / rowCount) > 0.6 && !isIdLike(c));
   const smallCat = flagCol ? flagCol.name : (groupCandidates.find((c) => c.distinct <= 8) || {}).name || null;
 
@@ -453,11 +466,19 @@ function autoCharts() {
   if (smallCat) {
     charts.push({ id: uid(), type: "donut", title: "Breakdown by " + smallCat, agg: "count", measure: null, groupBy: smallCat, width: "half", limit: 8, sort: "desc" });
   }
-  if (secondGroup) {
+  // Pick a grouping we have not already charted with this measure, so the
+  // board never shows the same breakdown twice in two different shapes.
+  const alreadyCharted = new Set(charts.filter((c) => c.groupBy)
+    .map((c) => (c.measure || "count") + "|" + c.groupBy));
+  const secondPick = [secondGroup].concat(groupCandidates)
+    .filter(Boolean)
+    .find((c) => c.name !== mainGroup &&
+      !alreadyCharted.has((primaryMeasure || "count") + "|" + c.name));
+  if (secondPick) {
     charts.push({
       id: uid(), type: smallTable ? "progress" : "hbar",
-      title: primaryMeasure ? primaryMeasure + " by " + secondGroup.name : "Rows by " + secondGroup.name,
-      agg: primaryMeasure ? "sum" : "count", measure: primaryMeasure, groupBy: secondGroup.name, width: "half", limit: 10, sort: "desc",
+      title: primaryMeasure ? primaryMeasure + " by " + secondPick.name : "Rows by " + secondPick.name,
+      agg: primaryMeasure ? "sum" : "count", measure: primaryMeasure, groupBy: secondPick.name, width: "half", limit: 10, sort: "desc",
     });
   }
   const realDateCols = dateCols.filter((c) => !/estimated/i.test(c.name));
@@ -465,7 +486,11 @@ function autoCharts() {
     charts.push({ id: uid(), type: "area", title: primaryMeasure + " over time", agg: "sum", measure: primaryMeasure, groupBy: realDateCols[0].name, width: "full", limit: 24, sort: "date" });
   }
   if (mainGroup) {
-    charts.push({ id: uid(), type: "table", title: "Summary table", agg: primaryMeasure ? "sum" : "count", measure: primaryMeasure, groupBy: mainGroup, width: "full", limit: 12, sort: "desc" });
+    const charted = new Set(charts.filter((c) => c.groupBy && c.type !== "table")
+      .map((c) => (c.measure || "count") + "|" + c.groupBy));
+    const tableGroup = ([{ name: mainGroup }].concat(groupCandidates)
+      .find((c) => !charted.has((primaryMeasure || "count") + "|" + c.name)) || { name: mainGroup }).name;
+    charts.push({ id: uid(), type: "table", title: "Summary table", agg: primaryMeasure ? "sum" : "count", measure: primaryMeasure, groupBy: tableGroup, width: "full", limit: 12, sort: "desc" });
   }
 
   // A date column that reads as a deadline (due, expiry, recert, next
@@ -518,6 +543,9 @@ function aggregate(chart) {
     if (chart.measure) { const n = toNumber(r[chart.measure]); if (n !== null) b.vals.push(n); }
   }
   let arr = Array.from(map.values()).map((b) => ({ key: b.key, value: computeValue(chart.agg, b.vals, b.count) }));
+  // key stays raw so cross-filtering still matches; label is what people read.
+  const dateGroup = chart.groupBy && colType(chart.groupBy) === "date";
+  arr.forEach((d) => { d.label = dateGroup ? monthLabel(d.key) : d.key; });
   const isDate = chart.groupBy && colType(chart.groupBy) === "date";
   if (chart.sort === "date" || isDate) arr.sort((a, b) => a.key.localeCompare(b.key));
   else if (chart.sort === "asc") arr.sort((a, b) => a.value - b.value);
@@ -555,7 +583,7 @@ function aggregateStacked(chart) {
 function measureLabel(chart) {
   if (chart.agg === "count") return "Count";
   const a = AGGS.find((x) => x.id === chart.agg);
-  return (a ? a.name : "Sum") + " of " + (chart.measure || "—");
+  return (a ? a.name : "Sum") + " of " + (chart.measure || "value");
 }
 
 /* ---------- drawing ---------- */
@@ -611,10 +639,10 @@ function drawBar(chart, W, H) {
     const h = max ? (d.value / max) * ih : 0;
     const x = P.l + step * i + (step - bw) / 2;
     const y = P.t + ih - h;
-    return '<g' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + '><title>' + esc(d.key) + ': ' + fmtFull(d.value) + '</title>' +
+    return '<g' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + '><title>' + esc(d.label || d.key) + ': ' + fmtFull(d.value) + '</title>' +
       '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + Math.max(h, 1) + '" rx="4" fill="' + SERIES_HUE + '"/>' +
       '<text x="' + (x + bw / 2) + '" y="' + (y - 6) + '" text-anchor="middle" class="val-lbl">' + fmt(d.value) + '</text>' +
-      catLabel(x + bw / 2, H - P.b + 18, d.key, data.length) + '</g>';
+      catLabel(x + bw / 2, H - P.b + 18, d.label || d.key, data.length) + '</g>';
   }).join("");
 
   return svgWrap(W, H, grid + bars);
@@ -632,8 +660,8 @@ function drawHBar(chart, W, H) {
   const bars = data.map(function (d, i) {
     const w = (d.value / max) * iw;
     const y = P.t + step * i + (step - bh) / 2;
-    return '<g' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + '><title>' + esc(d.key) + ': ' + fmtFull(d.value) + '</title>' +
-      '<text x="' + (P.l - 10) + '" y="' + (y + bh / 2 + 4) + '" text-anchor="end" class="cat-lbl">' + esc(clip(d.key, 18)) + '</text>' +
+    return '<g' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + '><title>' + esc(d.label || d.key) + ': ' + fmtFull(d.value) + '</title>' +
+      '<text x="' + (P.l - 10) + '" y="' + (y + bh / 2 + 4) + '" text-anchor="end" class="cat-lbl">' + esc(clip(d.label || d.key, 18)) + '</text>' +
       '<rect x="' + P.l + '" y="' + y + '" width="' + Math.max(w, 1) + '" height="' + bh + '" rx="4" fill="' + SERIES_HUE + '"/>' +
       '<text x="' + (P.l + w + 8) + '" y="' + (y + bh / 2 + 4) + '" class="val-lbl">' + fmt(d.value) + '</text></g>';
   }).join("");
@@ -642,7 +670,7 @@ function drawHBar(chart, W, H) {
 
 function drawLineArea(chart, W, H, filled) {
   const data = aggregate(chart);
-  if (data.length < 2) return '<div class="chart-empty">Needs at least 2 points — try a different Group by</div>';
+  if (data.length < 2) return '<div class="chart-empty">Needs at least 2 points. Try a different Group by.</div>';
   const P = { l: 56, r: 16, t: 20, b: 46 };
   const max = niceMax(Math.max.apply(null, data.map((d) => d.value).concat([0])));
   const iw = W - P.l - P.r, ih = H - P.t - P.b;
@@ -662,7 +690,7 @@ function drawLineArea(chart, W, H, filled) {
 
   const every = Math.ceil(data.length / 8);
   const xl = data.map((d, i) => i % every === 0
-    ? '<text x="' + xAt(i) + '" y="' + (H - P.b + 20) + '" text-anchor="middle" class="cat-lbl">' + esc(clip(d.key, 10)) + '</text>' : "").join("");
+    ? '<text x="' + xAt(i) + '" y="' + (H - P.b + 20) + '" text-anchor="middle" class="cat-lbl">' + esc(clip(d.label || d.key, 10)) + '</text>' : "").join("");
 
   return svgWrap(W, H, grid + area + line + dots + xl);
 }
@@ -697,7 +725,7 @@ function drawPieDonut(chart, W, H, isDonut) {
   const legend = data.slice(0, 9).map(function (d, i) {
     const y = 26 + i * 21;
     return '<g' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + '><rect x="' + lx + '" y="' + (y - 9) + '" width="11" height="11" rx="3" fill="' + colorFor(i) + '"/>' +
-      '<text x="' + (lx + 18) + '" y="' + y + '" class="cat-lbl">' + esc(clip(d.key, 16)) + '</text>' +
+      '<text x="' + (lx + 18) + '" y="' + y + '" class="cat-lbl">' + esc(clip(d.label || d.key, 16)) + '</text>' +
       '<text x="' + (W - 12) + '" y="' + y + '" text-anchor="end" class="val-lbl">' + fmt(d.value) + '</text></g>';
   }).join("");
   return svgWrap(W, H, slices + center + legend);
@@ -745,7 +773,7 @@ function drawProgress(chart) {
   const max = Math.max.apply(null, data.map((d) => d.value).concat([1]));
   return '<div class="prog-list">' + data.map(function (d, i) {
     const p = (d.value / max) * 100;
-    return '<div class="prog-row' + (state.filter && state.filter.col === chart.groupBy ? (state.filter.key === d.key ? ' active' : ' dimmed-row') : '') + ' clickable" data-fcol="' + esc(chart.groupBy) + '" data-fkey="' + esc(d.key) + '"><div class="prog-top"><span class="prog-name">' + esc(d.key) + '</span>' +
+    return '<div class="prog-row' + (state.filter && state.filter.col === chart.groupBy ? (state.filter.key === d.key ? ' active' : ' dimmed-row') : '') + ' clickable" data-fcol="' + esc(chart.groupBy) + '" data-fkey="' + esc(d.key) + '"><div class="prog-top"><span class="prog-name">' + esc(d.label || d.key) + '</span>' +
       '<span class="prog-val mono">' + fmtFull(d.value) + '</span></div>' +
       '<div class="prog-track"><div class="prog-fill" style="width:' + p + '%; background:' + SERIES_HUE + '"></div></div></div>';
   }).join("") + '</div>';
@@ -757,7 +785,7 @@ function drawTable(chart) {
   const total = data.reduce((a, b) => a + b.value, 0) || 1;
   return '<div class="tbl-scroll"><table class="v-table"><thead><tr><th>' + esc(chart.groupBy || "Group") +
     '</th><th>' + esc(measureLabel(chart)) + '</th><th>Share</th></tr></thead><tbody>' +
-    data.map((d) => '<tr class="clickable' + (state.filter && state.filter.col === chart.groupBy && state.filter.key === d.key ? ' active' : '') + '" data-fcol="' + esc(chart.groupBy) + '" data-fkey="' + esc(d.key) + '"><td>' + esc(d.key) + '</td><td class="mono">' + fmtFull(d.value) +
+    data.map((d) => '<tr class="clickable' + (state.filter && state.filter.col === chart.groupBy && state.filter.key === d.key ? ' active' : '') + '" data-fcol="' + esc(chart.groupBy) + '" data-fkey="' + esc(d.key) + '"><td>' + esc(d.label || d.key) + '</td><td class="mono">' + fmtFull(d.value) +
       '</td><td class="mono dimmed">' + Math.round(d.value / total * 100) + '%</td></tr>').join("") +
     '</tbody></table></div>';
 }
@@ -844,7 +872,7 @@ function drawFunnel(chart, W, H) {
   const bands = data.map(function (d, i) {
     const w = Math.max((d.value / max) * (W * 0.8), 40);
     const y = P.t + rowH * i;
-    return '<g' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + '><title>' + esc(d.key) + ': ' + fmtFull(d.value) + '</title>' +
+    return '<g' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + '><title>' + esc(d.label || d.key) + ': ' + fmtFull(d.value) + '</title>' +
       '<rect x="' + (cx - w / 2) + '" y="' + (y + 3) + '" width="' + w + '" height="' + Math.max(rowH - 6, 4) + '" rx="4" fill="' + colorFor(i) + '"/>' +
       '<text x="' + cx + '" y="' + (y + rowH / 2 + 4) + '" text-anchor="middle" class="fn-lbl">' + esc(clip(d.key, 22)) + ' · ' + fmt(d.value) + '</text></g>';
   }).join("");
@@ -913,7 +941,7 @@ function drawCombo(chart, W, H) {
     const y = P.t + ih - h;
     return '<g' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + '><title>' + esc(d.key) + ': ' + fmtFull(d.value) + ' · ' + (countMap[d.key] || 0) + ' rows</title>' +
       '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + Math.max(h, 1) + '" rx="4" fill="' + SERIES_HUE + '"/>' +
-      catLabel(x + bw / 2, H - P.b + 18, d.key, data.length) + '</g>';
+      catLabel(x + bw / 2, H - P.b + 18, d.label || d.key, data.length) + '</g>';
   }).join("");
   const pts = data.map(function (d, i) {
     const cx = P.l + step * i + step / 2;
@@ -1024,11 +1052,11 @@ function renderAll() {
   if (board) board.style.display = "";
 
   const src = document.getElementById("file-name");
-  if (src) src.textContent = state.fileName || "—";
+  if (src) src.textContent = state.fileName || "";
 
   const ti = document.getElementById("board-title");
   if (ti) ti.value = state.boardTitle || "";
-  document.title = state.boardTitle ? state.boardTitle + " — SEVEN" : "SEVEN";
+  document.title = state.boardTitle ? state.boardTitle + " | SEVEN" : "SEVEN";
 
   // Sheet picker only exists on the file-upload page.
   const sheetSel = document.getElementById("sheet-select");
@@ -1046,9 +1074,9 @@ function renderAll() {
   renderCharts();
 }
 
-/* The analyst's summary: a compact panel of ranked findings above the
-   charts. Clicking a finding that names a column filters to the rows
-   behind it where that makes sense (e.g. jump to the overdue items). */
+/* The analyst's summary. Each finding is a claim you can read in one
+   line, with the numbers behind it underneath, so the panel is worth
+   reading rather than a row of statistics. */
 function renderInsights() {
   let panel = document.getElementById("insights-panel");
   const grid = document.getElementById("chart-grid");
@@ -1058,23 +1086,27 @@ function renderInsights() {
     panel.id = "insights-panel";
     grid.parentNode.insertBefore(panel, grid);
   }
-  const items = (state.insights || []).slice(0, 6);
+  const items = (state.insights || []).slice(0, 5);
   if (!items.length) { panel.style.display = "none"; panel.innerHTML = ""; return; }
-  const icon = { compliance: "!", outlier: "◆", pareto: "▲", correlation: "≈", shape: "∿", quality: "○" };
   panel.style.display = "";
   panel.innerHTML =
-    '<div class="ins-head"><span class="ins-title display">What the data shows</span>' +
-    '<span class="ins-sub">' + items.length + ' of ' + state.insights.length + ' findings</span></div>' +
+    '<div class="ins-head"><span class="ins-title display">What the numbers say</span>' +
+    (state.insights.length > items.length
+      ? '<span class="ins-sub">' + items.length + ' of ' + state.insights.length + '</span>' : '') +
+    '</div>' +
     '<div class="ins-list">' + items.map(function (it) {
-      return '<div class="ins-item sev-' + it.severity + '"><span class="ins-dot">' + (icon[it.kind] || "•") + '</span>' +
-        '<span class="ins-text">' + esc(it.text) + '</span></div>';
+      return '<div class="ins-item sev-' + it.severity + '">' +
+        '<span class="ins-dot" aria-hidden="true"></span>' +
+        '<span class="ins-text"><b>' + esc(it.headline) + '</b>' +
+        (it.detail ? '<span class="ins-detail">' + esc(it.detail) + '</span>' : '') +
+        '</span></div>';
     }).join("") + '</div>';
 }
 
 function renderCharts() {
   const grid = document.getElementById("chart-grid");
   if (!state.charts.length) {
-    grid.innerHTML = '<div class="no-charts">No charts yet — click <b>+ Add chart</b> to start building.</div>';
+    grid.innerHTML = '<div class="no-charts">No charts yet. Click <b>+ Add chart</b> to start building.</div>';
     saveLayout();
     return;
   }
@@ -1126,7 +1158,7 @@ function renderCharts() {
 }
 
 /* A slim banner above the charts showing the active filter, with a
-   clear button — so it's never a mystery why numbers changed. */
+   clear button, so it's never a mystery why numbers changed. */
 function renderFilterBar() {
   const grid = document.getElementById("chart-grid");
   if (!grid) return;
@@ -1182,24 +1214,24 @@ function openEditor(id) {
     '<label class="fld"><span>Chart type</span><select id="f-type">' +
       CHART_TYPES.map((t) => '<option value="' + t.id + '"' + sel(t.id, c.type) + '>' + t.name + '</option>').join("") + '</select></label>' +
     '<label class="fld"><span>Title</span><input id="f-title" value="' + esc(c.title || "") + '" placeholder="Leave blank to auto-name" /></label>' +
-    '<label class="fld"><span>Group by (category)</span><select id="f-group"><option value="">— none —</option>' +
+    '<label class="fld"><span>Group by (category)</span><select id="f-group"><option value="">None</option>' +
       catCols.map((x) => '<option' + sel(x.name, c.groupBy) + '>' + esc(x.name) + '</option>').join("") + '</select></label>' +
-    '<label class="fld"><span>Split by <em>(stacked bar)</em> or Date column <em>(countdown, deadlines)</em></span><select id="f-series"><option value="">— none —</option>' +
+    '<label class="fld"><span>Split by <em>(stacked bar)</em> or Date column <em>(countdown, deadlines)</em></span><select id="f-series"><option value="">None</option>' +
       catCols.map((x) => '<option' + sel(x.name, c.series) + '>' + esc(x.name) + '</option>').join("") + '</select></label>' +
     '<label class="fld"><span>Measure</span><select id="f-agg">' +
       AGGS.map((a) => '<option value="' + a.id + '"' + sel(a.id, c.agg) + '>' + a.name + '</option>').join("") + '</select></label>' +
-    '<label class="fld"><span>Of column</span><select id="f-measure"><option value="">— none —</option>' +
+    '<label class="fld"><span>Of column</span><select id="f-measure"><option value="">None</option>' +
       numCols.map((x) => '<option' + sel(x.name, c.measure) + '>' + esc(x.name) + '</option>').join("") + '</select></label>' +
     '<label class="fld"><span>Size</span><select id="f-width">' +
-      '<option value="quarter"' + sel("quarter", c.width) + '>Small — quarter width</option>' +
-      '<option value="half"' + sel("half", c.width) + '>Medium — half width</option>' +
-      '<option value="full"' + sel("full", c.width) + '>Large — full width</option></select></label>' +
+      '<option value="quarter"' + sel("quarter", c.width) + '>Small (quarter width)</option>' +
+      '<option value="half"' + sel("half", c.width) + '>Medium (half width)</option>' +
+      '<option value="full"' + sel("full", c.width) + '>Large (full width)</option></select></label>' +
     '<label class="fld"><span>Show top</span><input id="f-limit" type="number" min="1" max="50" value="' + (c.limit || 12) + '" /></label>' +
     '<label class="fld"><span>Target <em>(gauge only, blank = total)</em></span><input id="f-target" type="number" value="' + (c.target !== undefined && c.target !== null ? esc(c.target) : "") + '" placeholder="e.g. 100" /></label>' +
     '<label class="fld"><span>Sort</span><select id="f-sort">' +
       '<option value="desc"' + sel("desc", c.sort) + '>Highest first</option>' +
       '<option value="asc"' + sel("asc", c.sort) + '>Lowest first</option>' +
-      '<option value="label"' + sel("label", c.sort) + '>By name (A–Z)</option>' +
+      '<option value="label"' + sel("label", c.sort) + '>By name (A to Z)</option>' +
       '<option value="date"' + sel("date", c.sort) + '>By date / time</option></select></label>';
 
   document.getElementById("editor-modal").classList.add("open");
@@ -1290,7 +1322,7 @@ function cleanCellValue(v) {
 
   if (names.length === 1) return names[0];
   if (names.length > 1) return names.length + " files";
-  // Not a recognisable name-bearing structure — at least don't dump raw braces.
+  // Not a recognisable name-bearing structure, so at least don't dump raw braces.
   if (s[0] === "{" || s[0] === "[") return s.length > 1 ? "Attached" : v;
   return v;
 }
@@ -1302,7 +1334,7 @@ function cleanRow(row) {
 }
 
 /* ============================================================
-   Analysis engine — the "data analyst" layer.
+   Analysis engine: the "data analyst" layer.
    Profiles every column with real statistics and surfaces
    findings (outliers, skew, concentration, correlation,
    trends, data-quality gaps) so dashboards are analytical,
@@ -1336,7 +1368,7 @@ function profileNumeric(colName) {
   // Outliers by the standard 1.5×IQR rule.
   const loFence = q1 - 1.5 * iqr, hiFence = q3 + 1.5 * iqr;
   const outliers = vals.filter((v) => v < loFence || v > hiFence);
-  // Skew (Pearson's second coefficient) — direction and strength of the tail.
+  // Skew (Pearson's second coefficient): direction and strength of the tail.
   const skew = sd ? (3 * (mean - median)) / sd : 0;
   // Concentration: does a small share of rows hold most of the total? (Pareto)
   const desc = vals.slice().sort((a, b) => b - a);
@@ -1372,86 +1404,304 @@ function buildProfile() {
   state.profile = profile;
 }
 
-/* Turn the raw statistics into plain-language findings, ranked by how
-   much they'd matter to someone running these attractions. */
+/* ============================================================
+   Findings.
+
+   The rule here: a finding has to name something real and give a
+   number you can act on. "32% of rows make up 80% of X" is not a
+   finding, it's a restatement of a statistic, and repeating it once
+   per numeric column fills the panel with noise. So every finding
+   below names a category, a period, a ratio or a record, is capped
+   to one per kind, and is ranked by how much it would change what
+   someone does next.
+   ============================================================ */
+
+/* Columns whose values are counts/amounts, so a total means something.
+   Unit prices, rates and percentages are excluded: summing them is
+   meaningless, and they get described by their spread instead. */
+const RE_IDLIKE  = /(^|\b)(id|code|no|num|number|ref|sku|zip|postal|phone|year|serial|barcode)(\b|$)/i;
+const RE_PERUNIT = /(price|rate|per\b|percent|%|margin|ratio|score|avg|average|median|index|each|unit cost)/i;
+const RE_MONEYISH = /(sales|revenue|amount|total|value|spend|cost|profit|income|budget)/i;
+
+function additiveMeasures() {
+  return state.columns.filter(function (c) {
+    if (c.type !== "number" || RE_IDLIKE.test(c.name) || RE_PERUNIT.test(c.name)) return false;
+    const p = state.profile[c.name];
+    return p && p.sum > 0 && p.n > 2;
+  });
+}
+
+function primaryMeasure() {
+  const m = additiveMeasures();
+  if (!m.length) return null;
+  const money = m.filter((c) => RE_MONEYISH.test(c.name));
+  const pool = money.length ? money : m;
+  return pool.slice().sort((a, b) => state.profile[b.name].sum - state.profile[a.name].sum)[0];
+}
+
+/* Text columns that actually group the data: a handful of repeated
+   values, not a near-unique label per row. */
+function dimensions() {
+  const n = state.rows.length || 1;
+  return state.columns
+    .filter((c) => c.type === "text" && c.distinct >= 2 && c.distinct <= 25 && c.distinct <= n * 0.6)
+    .sort((a, b) => a.distinct - b.distinct);
+}
+
+/* A column that identifies a row, for naming the record behind a number. */
+function labelColumn() {
+  const n = state.rows.length || 1;
+  return state.columns.find((c) => c.type === "text" && /name|item|asset|title|product|description|label/i.test(c.name))
+      || state.columns.find((c) => c.type === "text" && c.distinct > n * 0.6)
+      || null;
+}
+
+function monthLabel(key) {
+  const m = /^(\d{4})-(\d{2})$/.exec(key);
+  if (!m) return key;
+  const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return MON[Number(m[2]) - 1] + " " + m[1];
+}
+
+function listNames(keys, max) {
+  const shown = keys.slice(0, max);
+  if (keys.length <= max) {
+    return shown.length > 1 ? shown.slice(0, -1).join(", ") + " and " + shown[shown.length - 1] : shown[0];
+  }
+  return shown.join(", ") + " and " + (keys.length - max) + " more";
+}
+
 function buildInsights() {
   const out = [];
   const rowN = state.rows.length || 1;
-  const numCols = state.columns.filter((c) => c.type === "number");
-  const textCols = state.columns.filter((c) => c.type === "text");
+  const dims = dimensions();
   const dateCols = state.columns.filter((c) => c.type === "date");
+  const measure = primaryMeasure();
+  const measures = additiveMeasures();
 
-  // Data-quality: columns with meaningful missing data.
-  state.columns.forEach(function (c) {
-    const missing = rowN - c.filled;
-    if (missing > 0 && missing / rowN >= 0.15) {
-      out.push({ kind: "quality", severity: missing / rowN > 0.5 ? "high" : "med",
-        text: c.name + " is empty in " + missing + " of " + rowN + " rows (" + Math.round(missing / rowN * 100) + "%)", col: c.name });
-    }
-  });
+  const add = (kind, severity, headline, detail, col) =>
+    out.push({ kind: kind, severity: severity, headline: headline, detail: detail, col: col });
 
-  // Numeric findings: outliers, concentration, all-zero (unfilled) columns.
-  numCols.forEach(function (c) {
-    const p = state.profile[c.name]; if (!p) return;
-    if (p.zeros === p.n) {
-      out.push({ kind: "quality", severity: "med", text: c.name + " is all zeros — likely awaiting real values", col: c.name });
-      return;
-    }
-    if (p.outliers.length) {
-      out.push({ kind: "outlier", severity: p.outliers.length / p.n > 0.1 ? "med" : "low",
-        text: c.name + " has " + p.outliers.length + " outlier row" + (p.outliers.length > 1 ? "s" : "") + " (unusually " + (Math.max.apply(null, p.outliers) > p.q3 ? "high" : "low") + " values)", col: c.name });
-    }
-    if (p.paretoShare > 0 && p.paretoShare <= 0.35 && p.sum > 0) {
-      out.push({ kind: "pareto", severity: "high",
-        text: Math.round(p.paretoShare * 100) + "% of rows make up 80% of total " + c.name + " — focus effort there", col: c.name });
-    }
-    if (Math.abs(p.skew) > 1) {
-      out.push({ kind: "shape", severity: "low",
-        text: c.name + " is " + (p.skew > 0 ? "right" : "left") + "-skewed — a few " + (p.skew > 0 ? "large" : "small") + " values pull the average", col: c.name });
-    }
-  });
+  /* ---- 1. Who leads, by name ---------------------------------- */
+  if (measure && dims.length) {
+    const dim = dims[dims.length - 1];
+    const rows = aggregate({ groupBy: dim.name, measure: measure.name, agg: "sum", sort: "desc" });
+    const total = rows.reduce((a, b) => a + b.value, 0);
+    if (rows.length >= 2 && total > 0) {
+      const top = rows[0], second = rows[1];
+      const share = Math.round((top.value / total) * 100);
+      add("leader", "high",
+        top.key + " leads on " + measure.name,
+        fmt(top.value) + " of " + fmt(total) + " total (" + share + "%), ahead of " +
+        second.key + " at " + fmt(second.value),
+        measure.name);
 
-  // Correlations between numeric pairs.
-  for (let i = 0; i < numCols.length; i++) {
-    for (let j = i + 1; j < numCols.length; j++) {
-      const corr = correlation(numCols[i].name, numCols[j].name);
-      if (corr && Math.abs(corr.r) >= 0.6 && Math.abs(corr.r) < 0.995) {
-        out.push({ kind: "correlation", severity: "med",
-          text: numCols[i].name + " and " + numCols[j].name + " move " + (corr.r > 0 ? "together" : "opposite") + " (r=" + corr.r.toFixed(2) + ")",
-          cols: [numCols[i].name, numCols[j].name] });
+      /* ---- 2. How concentrated it is, in categories not rows ---- */
+      if (rows.length >= 4) {
+        let acc = 0, k = 0;
+        for (const r of rows) { acc += r.value; k++; if (acc >= total * 0.8) break; }
+        if (k < rows.length && k / rows.length <= 0.6) {
+          add("concentration", "med",
+            k + " of " + rows.length + " " + dim.name.toLowerCase() + " values carry 80% of " + measure.name,
+            listNames(rows.slice(0, k).map((r) => r.key), 3) + ", so the rest move the total very little",
+            measure.name);
+        }
+      }
+
+      /* ---- 3. The weak end, which is usually the actionable one -- */
+      const last = rows[rows.length - 1];
+      if (rows.length >= 3 && last.value > 0 && top.value / last.value >= 3) {
+        add("gap", "med",
+          last.key + " is the weakest " + dim.name.toLowerCase() + " for " + measure.name,
+          fmt(last.value) + " against " + fmt(top.value) + " for " + top.key +
+          ", a gap of " + Math.round(top.value / last.value) + " times",
+          measure.name);
       }
     }
   }
 
-  // Domain findings tuned to her maintenance/certification/consumables data.
+  /* ---- 4. One amount as a share of another -------------------- */
+  const PARTS = [
+    [/discount/i, /gross|list|revenue|sales/i],
+    [/cogs|cost of goods/i, /sales|revenue/i],
+    [/profit/i, /sales|revenue/i],
+    [/tax|vat/i, /sales|revenue|total/i],
+    [/refund|return/i, /sales|revenue/i],
+    [/overtime/i, /hours|labour|labor/i],
+  ];
+  for (const pair of PARTS) {
+    const part = measures.find((c) => pair[0].test(c.name));
+    const whole = measures.find((c) => pair[1].test(c.name) && c.name !== (part || {}).name);
+    if (!part || !whole) continue;
+    const sp = state.profile[part.name].sum, sw = state.profile[whole.name].sum;
+    if (!(sw > 0 && sp > 0 && sp < sw)) continue;
+    const rate = (sp / sw) * 100;
+    let extra = "";
+    if (dims.length) {
+      const dim = dims[dims.length - 1];
+      const a = aggregate({ groupBy: dim.name, measure: part.name, agg: "sum", sort: "label" });
+      const b = aggregate({ groupBy: dim.name, measure: whole.name, agg: "sum", sort: "label" });
+      const bm = new Map(b.map((r) => [r.key, r.value]));
+      const rates = a.map((r) => ({ key: r.key, v: bm.get(r.key) ? (r.value / bm.get(r.key)) * 100 : null }))
+                     .filter((r) => r.v !== null).sort((x, y) => y.v - x.v);
+      if (rates.length >= 2 && rates[0].v - rates[rates.length - 1].v > 1) {
+        extra = ", highest in " + rates[0].key + " at " + rates[0].v.toFixed(1) + "% and lowest in " +
+                rates[rates.length - 1].key + " at " + rates[rates.length - 1].v.toFixed(1) + "%";
+      }
+    }
+    // Phrased so it reads correctly whether the column name is singular
+    // or plural ("Discounts", "Profit", "Tax").
+    const keeps = /profit|margin/i.test(part.name);
+    add("ratio", "high",
+      rate.toFixed(1) + "% of " + whole.name + (keeps ? " is kept as " : " goes to ") + part.name,
+      fmt(sp) + " against " + fmt(sw) + extra, part.name);
+    break;
+  }
+
+  /* ---- 5. Movement over time ---------------------------------- */
+  if (measure && dateCols.length) {
+    const dc = dateCols[0];
+    const series = aggregate({ groupBy: dc.name, measure: measure.name, agg: "sum", sort: "date" })
+                     .filter((r) => r.key !== "(blank)");
+    if (series.length >= 3) {
+      const peak = series.slice().sort((a, b) => b.value - a.value)[0];
+      const low = series.slice().sort((a, b) => a.value - b.value)[0];
+      const first = series[0], last = series[series.length - 1];
+      const change = first.value ? ((last.value - first.value) / first.value) * 100 : 0;
+      add("trend", "high",
+        measure.name + " peaks in " + monthLabel(peak.key),
+        fmt(peak.value) + " at the peak against " + fmt(low.value) + " in " + monthLabel(low.key) +
+        ". From " + monthLabel(first.key) + " to " + monthLabel(last.key) + " it " +
+        (change >= 0 ? "rose " : "fell ") + Math.abs(Math.round(change)) + "%",
+        measure.name);
+    }
+  }
+
+  /* ---- 6. The record behind the biggest number ---------------- */
+  if (measure) {
+    const p = state.profile[measure.name];
+    const lab = labelColumn();
+    if (p && p.median > 0 && p.max >= p.median * 4) {
+      let who = null;
+      if (lab) {
+        let best = null;
+        for (const r of state.rows) {
+          const v = toNumber(r[measure.name]);
+          if (v !== null && (best === null || v > best.v)) best = { v: v, name: r[lab.name] };
+        }
+        if (best && best.name) who = String(best.name);
+      }
+      add("extreme", "med",
+        who ? (who + " is the single largest " + measure.name) : ("One row dominates " + measure.name),
+        fmt(p.max) + " against a typical " + fmtFull(p.median) + ", about " +
+        Math.round(p.max / p.median) + " times the middle of the range", measure.name);
+    }
+  }
+
+  /* ---- 7. What a per-unit column typically looks like ---------- */
+  const perUnit = state.columns.filter((c) => c.type === "number" && RE_PERUNIT.test(c.name) && !RE_IDLIKE.test(c.name));
+  if (perUnit.length) {
+    const c = perUnit[0], p = state.profile[c.name];
+    if (p && p.n > 4 && p.max > p.min) {
+      add("typical", "low",
+        c.name + " is typically " + fmtFull(p.median),
+        "half the values sit between " + fmtFull(p.q1) + " and " + fmtFull(p.q3) +
+        ", across a full range of " + fmtFull(p.min) + " to " + fmtFull(p.max), c.name);
+    }
+  }
+
+  /* ---- 8. Gaps in the file ------------------------------------ */
+  const gaps = state.columns
+    .map((c) => ({ c: c, missing: rowN - c.filled }))
+    .filter((g) => g.missing / rowN >= 0.15)
+    .sort((a, b) => b.missing - a.missing)
+    .slice(0, 2);
+  gaps.forEach(function (g) {
+    const pctMissing = Math.round((g.missing / rowN) * 100);
+    add("quality", g.missing / rowN > 0.5 ? "high" : "med",
+      g.c.name + " is blank in " + pctMissing + "% of rows",
+      g.missing + " of " + rowN + " rows carry no value, so anything grouped by it is incomplete", g.c.name);
+  });
+
+  /* ---- 9. Deadlines and flagged rows -------------------------- */
   const byName = (re) => state.columns.find((c) => re.test(c.name.toLowerCase()));
-  const statusCol = byName(/status/), recertCol = byName(/recert/), missingCol = byName(/missing.*doc/);
+  const statusCol = byName(/status/), missingCol = byName(/missing.*doc/);
   const deadlineCol = dateCols.find((c) => /due|expiry|expire|next|renew|recert/i.test(c.name)) ||
     state.columns.find((c) => /estimated/i.test(c.name) && c.type === "date");
 
   if (deadlineCol) {
     const items = computeDeadlines({ series: deadlineCol.name, groupBy: (byName(/name/) || {}).name });
-    const overdue = items.filter((d) => d.days < 0).length;
-    const soon = items.filter((d) => d.days >= 0 && d.days <= 30).length;
-    if (overdue) out.push({ kind: "compliance", severity: "high", text: overdue + " item" + (overdue > 1 ? "s are" : " is") + " past due on " + deadlineCol.name, col: deadlineCol.name });
-    if (soon) out.push({ kind: "compliance", severity: "med", text: soon + " item" + (soon > 1 ? "s" : "") + " due within 30 days on " + deadlineCol.name, col: deadlineCol.name });
+    const overdue = items.filter((d) => d.days < 0);
+    const soon = items.filter((d) => d.days >= 0 && d.days <= 30);
+    if (overdue.length) {
+      const worst = overdue.slice().sort((a, b) => a.days - b.days)[0];
+      add("compliance", "high",
+        overdue.length + " item" + (overdue.length > 1 ? "s are" : " is") + " past due on " + deadlineCol.name,
+        worst && worst.key ? (worst.key + " is the furthest behind, " + Math.abs(worst.days) + " days over")
+                           : "check these before anything else", deadlineCol.name);
+    }
+    if (soon.length) {
+      add("compliance", "med",
+        soon.length + " item" + (soon.length > 1 ? "s fall" : " falls") + " due within 30 days",
+        "on " + deadlineCol.name + ", so they are the next things to schedule", deadlineCol.name);
+    }
   }
   if (statusCol) {
     const bad = state.rows.filter((r) => /expired|overdue|fail|not good/i.test(String(r[statusCol.name] || ""))).length;
-    if (bad) out.push({ kind: "compliance", severity: "high", text: bad + " row" + (bad > 1 ? "s" : "") + " flagged in " + statusCol.name, col: statusCol.name });
+    if (bad) add("compliance", "high",
+      bad + " row" + (bad > 1 ? "s are" : " is") + " flagged in " + statusCol.name,
+      Math.round((bad / rowN) * 100) + "% of the file needs attention", statusCol.name);
   }
   if (missingCol) {
     const p = state.profile[missingCol.name];
     if (p && p.sum > 0) {
       const withMissing = state.rows.filter((r) => (toNumber(r[missingCol.name]) || 0) > 0).length;
-      out.push({ kind: "compliance", severity: withMissing / rowN > 0.4 ? "high" : "med",
-        text: withMissing + " of " + rowN + " items have missing documents (" + p.sum + " total)", col: missingCol.name });
+      add("compliance", withMissing / rowN > 0.4 ? "high" : "med",
+        withMissing + " of " + rowN + " items have missing documents",
+        p.sum + " documents outstanding in total", missingCol.name);
     }
   }
 
-  const rank = { high: 0, med: 1, low: 2 };
-  out.sort((a, b) => rank[a.severity] - rank[b.severity]);
-  state.insights = out;
+  /* ---- 10. Two columns that track each other ------------------ */
+  const numCols = state.columns.filter((c) => c.type === "number" && !RE_IDLIKE.test(c.name));
+  outer:
+  for (let i = 0; i < numCols.length; i++) {
+    for (let j = i + 1; j < numCols.length; j++) {
+      const corr = correlation(numCols[i].name, numCols[j].name);
+      if (corr && Math.abs(corr.r) >= 0.6 && Math.abs(corr.r) < 0.95) {
+        add("correlation", "low",
+          numCols[i].name + " and " + numCols[j].name +
+          (corr.r > 0 ? " rise and fall together" : " move in opposite directions"),
+          "correlation of " + corr.r.toFixed(2) + " across " + corr.n + " rows, so one largely explains the other",
+          numCols[i].name);
+        break outer;
+      }
+    }
+  }
+
+  /* ---- rank, then keep the panel readable --------------------- */
+  const ORDER = { compliance: 0, leader: 1, ratio: 2, trend: 3, concentration: 4,
+                  gap: 5, extreme: 6, quality: 7, typical: 8, correlation: 9 };
+  out.sort((a, b) => (ORDER[a.kind] - ORDER[b.kind]) ||
+                     ({ high: 0, med: 1, low: 2 }[a.severity] - { high: 0, med: 1, low: 2 }[b.severity]));
+
+  // No more than two findings leaning on the same column, so one busy
+  // column can't crowd out everything else.
+  function capPerColumn(limit) {
+    const seen = {}, kept = [];
+    for (const it of out) {
+      const key = it.col || "_";
+      seen[key] = (seen[key] || 0) + 1;
+      if (seen[key] <= limit) kept.push(it);
+    }
+    return kept;
+  }
+  // Two findings per column keeps a busy column from crowding the panel,
+  // but a file with only one real measure would be left with almost
+  // nothing, so loosen the cap rather than show a near-empty panel.
+  let kept = capPerColumn(2);
+  if (kept.length < 4) kept = capPerColumn(4);
+  state.insights = kept;
 }
 
 function runAnalysis() {
@@ -1522,21 +1772,28 @@ function injectEngineStyles() {
     .hm-table th:first-child, .hm-table td:first-child{ text-align:left; }
     #insights-panel{
       background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
-      box-shadow:var(--shadow); padding:16px 18px; margin-bottom:18px;
+      box-shadow:var(--shadow); padding:18px 20px 16px; margin-bottom:18px;
     }
-    #insights-panel .ins-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:12px; }
-    #insights-panel .ins-title{ font-size:15px; }
-    #insights-panel .ins-sub{ font-size:11.5px; color:var(--ink-faint); }
-    #insights-panel .ins-list{ display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:8px 18px; }
-    #insights-panel .ins-item{ display:flex; align-items:flex-start; gap:9px; font-size:13px; line-height:1.4; }
+    #insights-panel .ins-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:14px; }
+    #insights-panel .ins-title{ font-size:14px; font-weight:600; letter-spacing:-0.01em; }
+    #insights-panel .ins-sub{
+      font-family:var(--mono); font-size:10px; letter-spacing:.12em;
+      text-transform:uppercase; color:var(--ink-3);
+    }
+    #insights-panel .ins-list{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px 28px; }
+    #insights-panel .ins-item{ display:flex; align-items:flex-start; gap:10px; }
     #insights-panel .ins-dot{
-      flex:0 0 auto; width:18px; height:18px; border-radius:4px; font-size:11px;
-      display:flex; align-items:center; justify-content:center; margin-top:1px; font-weight:700;
+      flex:0 0 auto; width:7px; height:7px; border-radius:2px; margin-top:6px;
+      background:var(--ink-3);
     }
-    #insights-panel .sev-high .ins-dot{ background:var(--magenta-soft); color:var(--magenta); }
-    #insights-panel .sev-med .ins-dot{ background:var(--amber-soft); color:var(--amber); }
-    #insights-panel .sev-low .ins-dot{ background:var(--cyan-soft); color:var(--cyan); }
-    #insights-panel .ins-text{ color:var(--ink-dim); }`;
+    #insights-panel .sev-high .ins-dot{ background:var(--magenta); }
+    #insights-panel .sev-med .ins-dot{ background:var(--amber); }
+    #insights-panel .sev-low .ins-dot{ background:var(--cyan); }
+    #insights-panel .ins-text{ min-width:0; }
+    #insights-panel .ins-text b{ display:block; font-size:13px; font-weight:600; color:var(--ink); line-height:1.4; }
+    #insights-panel .ins-detail{
+      display:block; font-size:12px; color:var(--ink-2); line-height:1.5; margin-top:3px;
+    }`;
   const style = document.createElement("style");
   style.id = "engine-styles";
   style.textContent = css;
@@ -1568,7 +1825,7 @@ function initEditorUI() {
   if (titleInput) {
     titleInput.addEventListener("input", function (e) {
       state.boardTitle = e.target.value;
-      document.title = state.boardTitle ? state.boardTitle + " — SEVEN" : "SEVEN";
+      document.title = state.boardTitle ? state.boardTitle + " | SEVEN" : "SEVEN";
     });
     titleInput.addEventListener("blur", saveLayout);
     titleInput.addEventListener("keydown", function (e) { if (e.key === "Enter") titleInput.blur(); });

@@ -149,25 +149,61 @@ input:focus-visible, select:focus-visible{
 
 main{ max-width:1400px; margin:0 auto; padding:28px 32px 72px; }
 
-/* ---------- empty state / drop zone ---------------------------------- */
-#empty-state{
-  display:flex; flex-direction:column; align-items:center; gap:18px;
-  padding:56px 20px;
+/* ---------- empty state ------------------------------------------------
+   Not a dashed box with a graphic in it. A real panel that says what the
+   page will do once a file is in, so the screen earns its space.        */
+#empty-state{ padding:36px 0 0; }
+
+.starter{
+  max-width:940px; margin:0 auto;
+  background:var(--surface); border:1px solid var(--line);
+  border-radius:var(--radius); box-shadow:var(--shadow);
+  display:grid; grid-template-columns:1.3fr 1fr; gap:0;
+  overflow:hidden;
+  transition:border-color .15s ease, box-shadow .15s ease;
 }
-#drop-zone, #empty-state.dropzone{
-  width:100%; max-width:640px;
-  border:1px dashed var(--line-strong); border-radius:var(--radius);
-  background:var(--surface); padding:52px 32px; text-align:center;
-  transition:border-color .15s ease, background .15s ease;
+.starter.drag, #empty-state.drag .starter{
+  border-color:var(--cyan);
+  box-shadow:0 0 0 3px var(--cyan-soft);
 }
-#drop-zone.drag, #empty-state.drag{ border-color:var(--cyan); background:var(--cyan-soft); border-style:solid; }
-.drop-mark{ height:54px; width:auto; margin:0 auto 22px; display:block; }
-#drop-zone h2, #empty-state h2{ font-size:21px; margin-bottom:8px; letter-spacing:-0.02em; }
-#drop-zone p, #empty-state p{
-  color:var(--ink-2); font-size:13.5px; max-width:440px;
-  margin:0 auto 22px; line-height:1.6;
+
+.starter-main{ padding:38px 40px; }
+.starter-main .eyebrow{ display:block; margin-bottom:14px; }
+.starter-main h2{
+  font-size:23px; font-weight:600; letter-spacing:-0.025em;
+  line-height:1.2; margin-bottom:10px;
 }
-.hint{ color:var(--ink-3); font-size:12px; max-width:520px; text-align:center; line-height:1.6; }
+.starter-main p{
+  color:var(--ink-2); font-size:13.5px; line-height:1.6;
+  max-width:42ch; margin-bottom:24px;
+}
+.starter-main .btn{ padding:10px 18px; font-size:13px; }
+.starter-drag-note{
+  margin-top:16px; font-size:12px; color:var(--ink-3);
+}
+
+/* what you get out of it, so the panel is informative rather than blank */
+.starter-side{
+  padding:38px 36px;
+  background:var(--surface-sunk);
+  border-left:1px solid var(--line);
+}
+.starter-side .eyebrow{ display:block; margin-bottom:14px; }
+.starter-side ul{ list-style:none; display:flex; flex-direction:column; gap:10px; }
+.starter-side li{
+  font-size:12.5px; color:var(--ink-2); line-height:1.45;
+  padding-left:16px; position:relative;
+}
+.starter-side li::before{
+  content:''; position:absolute; left:0; top:7px;
+  width:6px; height:6px; border-radius:2px; background:var(--accent, var(--cyan));
+}
+
+@media (max-width:760px){
+  .starter{ grid-template-columns:1fr; }
+  .starter-main{ padding:30px 24px 26px; }
+  .starter-side{ padding:26px 24px 30px; border-left:none; border-top:1px solid var(--line); }
+}
 
 /* ---------- board chrome --------------------------------------------- */
 .title-row{ display:flex; align-items:baseline; gap:12px; margin-bottom:12px; flex-wrap:wrap; }

@@ -1,5 +1,5 @@
 /* ============================================================
-   SEVEN — Critical Path Dashboard
+   SEVEN Critical Path Dashboard
    Reads the "Critical Path" tab of the project's Excel tracker
    entirely in the browser (no server, no upload to any backend).
    ============================================================ */
@@ -194,7 +194,7 @@ function aggregate(rows) {
 
   const ownerList = Object.values(byOwner).sort((a, b) => b.items - a.items);
   const ownerNames = ownerList.map((o) => o.name);
-  // Readiness counts work that has been STARTED — complete + in-progress — against total items.
+  // Readiness counts work that has been STARTED (complete + in-progress) against total items.
   const readinessMatrix = depts.map((deptName) => {
     const cells = ownerNames.map((owner) => {
       const cell = byDeptOwner[deptName + "||" + owner];
@@ -232,7 +232,9 @@ function pct(n, d) { return d > 0 ? Math.round((n / d) * 100) : 0; }
 function renderCountdown(openingDate) {
   const label = document.getElementById("opening-date-label");
   const num = document.getElementById("countdown-num");
-  if (!openingDate) { label.textContent = "—"; num.textContent = "—"; return; }
+  const chip = document.getElementById("opening-chip");
+  if (!openingDate) { if (chip) chip.style.display = "none"; return; }
+  if (chip) chip.style.display = "";
   const today = new Date();
   const diffDays = Math.ceil((openingDate - today) / 86400000);
   num.textContent = diffDays >= 0 ? diffDays : 0;
@@ -291,7 +293,7 @@ function renderTrack(deptList, totals, openingDate) {
 }
 
 function renderKPIs(totals) {
-  // 16px line icons, drawn in the card's accent colour — no emoji.
+  // 16px line icons, drawn in the card's accent colour. No emoji.
   const ic = (d) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
   const cards = [
     { label: "Total Items",         value: totals.items,             accent: "var(--cyan)",    icon: ic('<rect x="3" y="4" width="18" height="6" rx="1"/><rect x="3" y="14" width="18" height="6" rx="1"/>') },
@@ -354,7 +356,7 @@ function renderTimeline(deptList, openingDate) {
     }
     const left = ((d.minStart - min) / span) * 100;
     const width = Math.max(((d.maxEnd - d.minStart) / span) * 100, 1.5);
-    const range = `${d.minStart.toLocaleDateString(undefined, { month: "short", day: "numeric" })} → ${d.maxEnd.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+    const range = `${d.minStart.toLocaleDateString(undefined, { month: "short", day: "numeric" })} to ${d.maxEnd.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
     return `<div class="tl-row">
       <div class="tl-name">${d.name}</div>
       <div class="tl-track" title="${d.name}: ${range}">
@@ -436,7 +438,7 @@ function renderReadinessMatrix(ownerList, readinessMatrix) {
   const head = `<tr><th class="rm-corner">Department</th>${ownerNames.map((o) => `<th>${o}</th>`).join("")}<th class="rm-overall">Overall</th></tr>`;
 
   const cellHtml = (c, extraClass) => {
-    if (!c.items) return `<td class="rm-cell rm-empty">—</td>`;
+    if (!c.items) return `<td class="rm-cell rm-empty"></td>`;
     const tip = `${fmt(c.complete)} complete + ${fmt(c.inProgress)} in progress of ${fmt(c.items)} items`;
     return `<td class="rm-cell ${extraClass || ""}" title="${tip}">
       <span class="rm-pill mono" style="background:${pctColor(c.pct).bg}; color:${pctColor(c.pct).fg};">${c.pct}%</span>
