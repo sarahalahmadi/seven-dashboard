@@ -53,6 +53,8 @@ const state = {
   // chart narrows to match — the interaction that makes a dashboard feel
   // like Power BI rather than a static report. null = no filter.
   filter: null,   // { col, key }
+  profile: {},    // per-column statistics from the analysis engine
+  insights: [],   // ranked plain-language findings
 };
 
 /* Rows the charts should currently draw from: everything, or just the
@@ -1034,7 +1036,33 @@ function renderAll() {
     } else wrap.style.display = "none";
   }
 
+  renderInsights();
   renderCharts();
+}
+
+/* The analyst's summary: a compact panel of ranked findings above the
+   charts. Clicking a finding that names a column filters to the rows
+   behind it where that makes sense (e.g. jump to the overdue items). */
+function renderInsights() {
+  let panel = document.getElementById("insights-panel");
+  const grid = document.getElementById("chart-grid");
+  if (!grid) return;
+  if (!panel) {
+    panel = document.createElement("div");
+    panel.id = "insights-panel";
+    grid.parentNode.insertBefore(panel, grid);
+  }
+  const items = (state.insights || []).slice(0, 6);
+  if (!items.length) { panel.style.display = "none"; panel.innerHTML = ""; return; }
+  const icon = { compliance: "!", outlier: "◆", pareto: "▲", correlation: "≈", shape: "∿", quality: "○" };
+  panel.style.display = "";
+  panel.innerHTML =
+    '<div class="ins-head"><span class="ins-title display">What the data shows</span>' +
+    '<span class="ins-sub">' + items.length + ' of ' + state.insights.length + ' findings</span></div>' +
+    '<div class="ins-list">' + items.map(function (it) {
+      return '<div class="ins-item sev-' + it.severity + '"><span class="ins-dot">' + (icon[it.kind] || "•") + '</span>' +
+        '<span class="ins-text">' + esc(it.text) + '</span></div>';
+    }).join("") + '</div>';
 }
 
 function renderCharts() {
@@ -1253,6 +1281,164 @@ function cleanRow(row) {
   return out;
 }
 
+/* ============================================================
+   Analysis engine — the "data analyst" layer.
+   Profiles every column with real statistics and surfaces
+   findings (outliers, skew, concentration, correlation,
+   trends, data-quality gaps) so dashboards are analytical,
+   not just decorative. Computed once per file at ingest and
+   stored on state.profile / state.insights.
+   ============================================================ */
+
+function numericValues(colName) {
+  const out = [];
+  for (const r of state.rows) { const n = toNumber(r[colName]); if (n !== null) out.push(n); }
+  return out;
+}
+
+function quantile(sorted, q) {
+  if (!sorted.length) return null;
+  const pos = (sorted.length - 1) * q, base = Math.floor(pos), rest = pos - base;
+  return sorted[base + 1] !== undefined ? sorted[base] + rest * (sorted[base + 1] - sorted[base]) : sorted[base];
+}
+
+function profileNumeric(colName) {
+  const vals = numericValues(colName).slice().sort((a, b) => a - b);
+  const n = vals.length;
+  if (!n) return null;
+  const sum = vals.reduce((a, b) => a + b, 0);
+  const mean = sum / n;
+  const variance = vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / n;
+  const sd = Math.sqrt(variance);
+  const min = vals[0], max = vals[n - 1];
+  const q1 = quantile(vals, 0.25), median = quantile(vals, 0.5), q3 = quantile(vals, 0.75);
+  const iqr = q3 - q1;
+  // Outliers by the standard 1.5×IQR rule.
+  const loFence = q1 - 1.5 * iqr, hiFence = q3 + 1.5 * iqr;
+  const outliers = vals.filter((v) => v < loFence || v > hiFence);
+  // Skew (Pearson's second coefficient) — direction and strength of the tail.
+  const skew = sd ? (3 * (mean - median)) / sd : 0;
+  // Concentration: does a small share of rows hold most of the total? (Pareto)
+  const desc = vals.slice().sort((a, b) => b - a);
+  let acc = 0, rowsForHalf = 0;
+  const total = sum || 1;
+  for (let i = 0; i < desc.length; i++) { acc += desc[i]; if (acc >= total * 0.8) { rowsForHalf = i + 1; break; } }
+  const paretoShare = rowsForHalf / n; // share of rows that make up 80% of the total
+  const zeros = vals.filter((v) => v === 0).length;
+  return { n, mean, sd, min, max, q1, median, q3, iqr, outliers, skew, sum, paretoShare, zeros, cv: mean ? sd / mean : 0 };
+}
+
+/* Pearson correlation between two numeric columns (rows where both present). */
+function correlation(colA, colB) {
+  const xs = [], ys = [];
+  for (const r of state.rows) {
+    const a = toNumber(r[colA]), b = toNumber(r[colB]);
+    if (a !== null && b !== null) { xs.push(a); ys.push(b); }
+  }
+  const n = xs.length;
+  if (n < 5) return null;
+  const mx = xs.reduce((a, b) => a + b, 0) / n, my = ys.reduce((a, b) => a + b, 0) / n;
+  let sxy = 0, sxx = 0, syy = 0;
+  for (let i = 0; i < n; i++) { const dx = xs[i] - mx, dy = ys[i] - my; sxy += dx * dy; sxx += dx * dx; syy += dy * dy; }
+  if (!sxx || !syy) return null;
+  return { r: sxy / Math.sqrt(sxx * syy), n };
+}
+
+function buildProfile() {
+  const profile = {};
+  state.columns.forEach(function (c) {
+    if (c.type === "number") profile[c.name] = profileNumeric(c.name);
+  });
+  state.profile = profile;
+}
+
+/* Turn the raw statistics into plain-language findings, ranked by how
+   much they'd matter to someone running these attractions. */
+function buildInsights() {
+  const out = [];
+  const rowN = state.rows.length || 1;
+  const numCols = state.columns.filter((c) => c.type === "number");
+  const textCols = state.columns.filter((c) => c.type === "text");
+  const dateCols = state.columns.filter((c) => c.type === "date");
+
+  // Data-quality: columns with meaningful missing data.
+  state.columns.forEach(function (c) {
+    const missing = rowN - c.filled;
+    if (missing > 0 && missing / rowN >= 0.15) {
+      out.push({ kind: "quality", severity: missing / rowN > 0.5 ? "high" : "med",
+        text: c.name + " is empty in " + missing + " of " + rowN + " rows (" + Math.round(missing / rowN * 100) + "%)", col: c.name });
+    }
+  });
+
+  // Numeric findings: outliers, concentration, all-zero (unfilled) columns.
+  numCols.forEach(function (c) {
+    const p = state.profile[c.name]; if (!p) return;
+    if (p.zeros === p.n) {
+      out.push({ kind: "quality", severity: "med", text: c.name + " is all zeros — likely awaiting real values", col: c.name });
+      return;
+    }
+    if (p.outliers.length) {
+      out.push({ kind: "outlier", severity: p.outliers.length / p.n > 0.1 ? "med" : "low",
+        text: c.name + " has " + p.outliers.length + " outlier row" + (p.outliers.length > 1 ? "s" : "") + " (unusually " + (Math.max.apply(null, p.outliers) > p.q3 ? "high" : "low") + " values)", col: c.name });
+    }
+    if (p.paretoShare > 0 && p.paretoShare <= 0.35 && p.sum > 0) {
+      out.push({ kind: "pareto", severity: "high",
+        text: Math.round(p.paretoShare * 100) + "% of rows make up 80% of total " + c.name + " — focus effort there", col: c.name });
+    }
+    if (Math.abs(p.skew) > 1) {
+      out.push({ kind: "shape", severity: "low",
+        text: c.name + " is " + (p.skew > 0 ? "right" : "left") + "-skewed — a few " + (p.skew > 0 ? "large" : "small") + " values pull the average", col: c.name });
+    }
+  });
+
+  // Correlations between numeric pairs.
+  for (let i = 0; i < numCols.length; i++) {
+    for (let j = i + 1; j < numCols.length; j++) {
+      const corr = correlation(numCols[i].name, numCols[j].name);
+      if (corr && Math.abs(corr.r) >= 0.6 && Math.abs(corr.r) < 0.995) {
+        out.push({ kind: "correlation", severity: "med",
+          text: numCols[i].name + " and " + numCols[j].name + " move " + (corr.r > 0 ? "together" : "opposite") + " (r=" + corr.r.toFixed(2) + ")",
+          cols: [numCols[i].name, numCols[j].name] });
+      }
+    }
+  }
+
+  // Domain findings tuned to her maintenance/certification/consumables data.
+  const byName = (re) => state.columns.find((c) => re.test(c.name.toLowerCase()));
+  const statusCol = byName(/status/), recertCol = byName(/recert/), missingCol = byName(/missing.*doc/);
+  const deadlineCol = dateCols.find((c) => /due|expiry|expire|next|renew|recert/i.test(c.name)) ||
+    state.columns.find((c) => /estimated/i.test(c.name) && c.type === "date");
+
+  if (deadlineCol) {
+    const items = computeDeadlines({ series: deadlineCol.name, groupBy: (byName(/name/) || {}).name });
+    const overdue = items.filter((d) => d.days < 0).length;
+    const soon = items.filter((d) => d.days >= 0 && d.days <= 30).length;
+    if (overdue) out.push({ kind: "compliance", severity: "high", text: overdue + " item" + (overdue > 1 ? "s are" : " is") + " past due on " + deadlineCol.name, col: deadlineCol.name });
+    if (soon) out.push({ kind: "compliance", severity: "med", text: soon + " item" + (soon > 1 ? "s" : "") + " due within 30 days on " + deadlineCol.name, col: deadlineCol.name });
+  }
+  if (statusCol) {
+    const bad = state.rows.filter((r) => /expired|overdue|fail|not good/i.test(String(r[statusCol.name] || ""))).length;
+    if (bad) out.push({ kind: "compliance", severity: "high", text: bad + " row" + (bad > 1 ? "s" : "") + " flagged in " + statusCol.name, col: statusCol.name });
+  }
+  if (missingCol) {
+    const p = state.profile[missingCol.name];
+    if (p && p.sum > 0) {
+      const withMissing = state.rows.filter((r) => (toNumber(r[missingCol.name]) || 0) > 0).length;
+      out.push({ kind: "compliance", severity: withMissing / rowN > 0.4 ? "high" : "med",
+        text: withMissing + " of " + rowN + " items have missing documents (" + p.sum + " total)", col: missingCol.name });
+    }
+  }
+
+  const rank = { high: 0, med: 1, low: 2 };
+  out.sort((a, b) => rank[a.severity] - rank[b.severity]);
+  state.insights = out;
+}
+
+function runAnalysis() {
+  buildProfile();
+  buildInsights();
+}
+
 function ingestRows(rows, opts) {
   opts = opts || {};
   state.rows = (rows || []).map(cleanRow);
@@ -1269,6 +1455,8 @@ function ingestRows(rows, opts) {
     const distinct = type === "text" ? new Set(values.map(function (v) { return String(v); })).size : null;
     return { name: nm, type: type, distinct: distinct, filled: values.filter(function (v) { return v !== "" && v !== null && v !== undefined; }).length };
   }).filter(function (c) { return c.filled > 0; });
+
+  runAnalysis();
 
   const saved = opts.restoreLayout === false ? null : loadLayout();
   if (saved && saved.charts && saved.charts.length) {
@@ -1312,7 +1500,23 @@ function injectEngineStyles() {
     .hm-table td.hm-cell{ text-align:center; color:var(--ink); }
     .hm-table th{ text-align:center; }
     .hm-table th:first-child, .hm-table td:first-child{ text-align:left; }
-  `;
+    #insights-panel{
+      background:var(--bg-panel); border:1px solid var(--border); border-radius:14px;
+      padding:16px 18px; margin-bottom:18px;
+    }
+    #insights-panel .ins-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:12px; }
+    #insights-panel .ins-title{ font-size:15px; }
+    #insights-panel .ins-sub{ font-size:11.5px; color:var(--ink-faint); }
+    #insights-panel .ins-list{ display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:8px 18px; }
+    #insights-panel .ins-item{ display:flex; align-items:flex-start; gap:9px; font-size:13px; line-height:1.4; }
+    #insights-panel .ins-dot{
+      flex:0 0 auto; width:18px; height:18px; border-radius:5px; font-size:11px;
+      display:flex; align-items:center; justify-content:center; margin-top:1px; font-weight:700;
+    }
+    #insights-panel .sev-high .ins-dot{ background:rgba(224,26,79,0.18); color:var(--magenta); }
+    #insights-panel .sev-med .ins-dot{ background:rgba(241,154,39,0.18); color:var(--orange); }
+    #insights-panel .sev-low .ins-dot{ background:rgba(12,175,191,0.16); color:var(--teal); }
+    #insights-panel .ins-text{ color:var(--ink-dim); }`;
   const style = document.createElement("style");
   style.id = "engine-styles";
   style.textContent = css;

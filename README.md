@@ -113,3 +113,16 @@ Click any bar, slice, treemap tile, funnel band, progress row, or table row on a
 ## Gauge target
 
 A gauge shows a value as a dial against a target. Set the target in the chart editor. Leave it blank and the target defaults to the unfiltered total, so with a filter active the gauge reads as "share of the whole".
+
+## Analysis layer ("What the data shows")
+
+Every uploaded file is now run through a statistical analysis engine before the dashboard is drawn. It profiles each numeric column (mean, median, quartiles, standard deviation, IQR outliers, skew, coefficient of variation) and surfaces ranked plain-language findings in a panel above the charts:
+
+- **Compliance** — items past due, rows flagged expired/overdue, items with missing documents.
+- **Pareto / concentration** — "X% of rows make up 80% of the total", so effort goes where it matters.
+- **Outliers** — unusually high or low values worth checking.
+- **Correlation** — numeric columns that move together (trivial unit-conversions like monthly vs annual are suppressed).
+- **Shape** — skew, so you know when a few big values are pulling an average.
+- **Data quality** — columns with lots of missing data, or all-zero columns still awaiting real values.
+
+Findings are ranked by severity (red = high, orange = medium, teal = low) and the top six show in the panel. This is real statistics computed in the browser — no keys, no cost.
