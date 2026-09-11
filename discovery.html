@@ -15,15 +15,29 @@
 
 
 <header class="top">
-  <div class="brand">
-    <img src="logo.png" alt="SEVEN" />
-    <span class="divider"></span>
-    <div class="name"><b>SEVEN</b> DISCOVERY</div>
-  </div>
+  <nav class="brand" aria-label="Breadcrumb">
+    <a class="brand-home" href="index.html" title="All dashboards">
+      <img src="logo.png" alt="SEVEN" />
+      <span class="brand-word">SEVEN</span>
+    </a>
+    <span class="brand-sep" aria-hidden="true">/</span>
+    <div class="switcher">
+      <button type="button" class="switch-btn" id="switch-btn"
+              aria-haspopup="true" aria-expanded="false" aria-controls="switch-menu">
+        <span>Discovery</span><svg class="switch-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg>
+      </button>
+      <div class="switch-menu" id="switch-menu" role="menu" aria-label="Go to dashboard">
+        <a class="switch-all" href="index.html" role="menuitem"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3.5" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13" width="7.5" height="7.5" rx="1.6"/></svg><span>All dashboards</span></a>
+        <div class="switch-rule" role="separator"></div>
+          <a class="switch-item" href="critical-path.html" role="menuitem" style="--dot:var(--magenta)"><span class="switch-dot"></span><span>Critical Path</span></a>
+          <a class="switch-item" href="visualizer.html" role="menuitem" style="--dot:var(--amber)"><span class="switch-dot"></span><span>Visualizer</span></a>
+          <a class="switch-item current" href="discovery.html" role="menuitem" aria-current="page" style="--dot:var(--cyan)"><span class="switch-dot"></span><span>Discovery</span><svg class="switch-tick" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></a>
+      </div>
+    </div>
+  </nav>
   <div class="top-actions">
-    <a class="btn ghost" href="index.html"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H6"/><path d="M11.5 5.5L5 12l6.5 6.5"/></svg> All dashboards</a>
     <button class="btn" id="print-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 9V4h10v5"/><path d="M7 18H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="7" y="14" width="10" height="7" rx="1"/></svg> Print / PDF</button>
-    <button class="btn primary" id="upload-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M7.5 8.5L12 4l4.5 4.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Open a file</button>
+    <button class="btn primary" id="upload-btn" style="display:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M7.5 8.5L12 4l4.5 4.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Open a file</button>
     <input type="file" id="file-input" accept=".xlsx,.xls,.csv" style="display:none" />
   </div>
 </header>
@@ -109,5 +123,6 @@
 
 <script src="engine.js"></script>
 <script src="discovery.js"></script>
+<script src="nav.js"></script>
 </body>
 </html>

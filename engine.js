@@ -1050,6 +1050,10 @@ function renderAll() {
   if (empty) empty.style.display = "none";
   const board = document.getElementById("board");
   if (board) board.style.display = "";
+  // The starter card carries its own upload button, so the one in the header
+  // only appears once that card is gone. Never two on screen at once.
+  const up = document.getElementById("upload-btn");
+  if (up) up.style.display = "";
 
   const src = document.getElementById("file-name");
   if (src) src.textContent = state.fileName || "";

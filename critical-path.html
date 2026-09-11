@@ -195,11 +195,26 @@
 
 
 <header class="top">
-  <div class="brand">
-    <img src="logo.png" alt="SEVEN" />
-    <span class="divider"></span>
-    <div class="name"><b>SEVEN</b> CRITICAL PATH</div>
-  </div>
+  <nav class="brand" aria-label="Breadcrumb">
+    <a class="brand-home" href="index.html" title="All dashboards">
+      <img src="logo.png" alt="SEVEN" />
+      <span class="brand-word">SEVEN</span>
+    </a>
+    <span class="brand-sep" aria-hidden="true">/</span>
+    <div class="switcher">
+      <button type="button" class="switch-btn" id="switch-btn"
+              aria-haspopup="true" aria-expanded="false" aria-controls="switch-menu">
+        <span>Critical Path</span><svg class="switch-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg>
+      </button>
+      <div class="switch-menu" id="switch-menu" role="menu" aria-label="Go to dashboard">
+        <a class="switch-all" href="index.html" role="menuitem"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3.5" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13" width="7.5" height="7.5" rx="1.6"/></svg><span>All dashboards</span></a>
+        <div class="switch-rule" role="separator"></div>
+          <a class="switch-item current" href="critical-path.html" role="menuitem" aria-current="page" style="--dot:var(--magenta)"><span class="switch-dot"></span><span>Critical Path</span><svg class="switch-tick" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></a>
+          <a class="switch-item" href="visualizer.html" role="menuitem" style="--dot:var(--amber)"><span class="switch-dot"></span><span>Visualizer</span></a>
+          <a class="switch-item" href="discovery.html" role="menuitem" style="--dot:var(--cyan)"><span class="switch-dot"></span><span>Discovery</span></a>
+      </div>
+    </div>
+  </nav>
   <div class="top-actions">
     <div class="opening-chip" id="opening-chip" style="display:none">
       <span class="countdown-num" id="countdown-num"></span>
@@ -209,8 +224,7 @@
       </div>
     </div>
     <button class="btn ghost" id="reset-btn" style="display:none;">Clear data</button>
-    <a class="btn ghost" href="index.html">All dashboards</a>
-    <button class="btn primary" id="upload-btn">
+    <button class="btn primary" id="upload-btn" style="display:none">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M7.5 8.5L12 4l4.5 4.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
       Update from Excel
     </button>
@@ -351,5 +365,6 @@
   </main>
 
 <script src="app.js"></script>
+<script src="nav.js"></script>
 </body>
 </html>

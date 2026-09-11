@@ -459,6 +459,9 @@ function renderAll() {
   document.getElementById("empty-state").style.display = "none";
   document.getElementById("dashboard").style.display = "block";
   document.getElementById("reset-btn").style.display = "inline-block";
+  // The starter card has its own upload button; the header one takes over
+  // only once that card is gone, so there is never a pair on screen.
+  document.getElementById("upload-btn").style.display = "";
   renderCountdown(state.openingDate);
   renderTrack(deptList, totals, state.openingDate);
   renderKPIs(totals);
@@ -502,6 +505,7 @@ document.getElementById("reset-btn").addEventListener("click", () => {
   document.getElementById("dashboard").style.display = "none";
   document.getElementById("empty-state").style.display = "block";
   document.getElementById("reset-btn").style.display = "none";
+  document.getElementById("upload-btn").style.display = "none";
 });
 
 // Drag & drop on the empty state
