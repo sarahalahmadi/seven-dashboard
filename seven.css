@@ -216,7 +216,6 @@ main{ max-width:1400px; margin:0 auto; padding:28px 32px 72px; }
 }
 .starter-main .btn{ padding:11px 20px; font-size:13px; }
 .starter-main .btn.primary:hover{ transform:translateY(-1px); box-shadow:0 6px 16px -6px rgba(18,64,111,.6); }
-.starter-drag-note{ margin-top:14px; font-size:12px; color:var(--ink-3); }
 
 /* the picture of what the page is about to build */
 .starter-art{

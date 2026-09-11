@@ -404,7 +404,7 @@ function renderDonuts(totals) {
 
   const onTimeStart = totals.tasks - totals.startDelayed;
   const startSegs = [
-    { label: "On-Time", value: onTimeStart, color: "#0092AC" },
+    { label: "On time", value: onTimeStart, color: "#0092AC" },
     { label: "Delayed", value: totals.startDelayed, color: "#D6004E" },
   ];
   drawDonut("donut-start", startSegs, totals.tasks);
@@ -413,7 +413,7 @@ function renderDonuts(totals) {
 
   const onTimeComp = totals.tasks - totals.completionOverdue;
   const compSegs = [
-    { label: "On-Time", value: onTimeComp, color: "#0092AC" },
+    { label: "On time", value: onTimeComp, color: "#0092AC" },
     { label: "Overdue", value: totals.completionOverdue, color: "#E4572E" },
   ];
   drawDonut("donut-completion", compSegs, totals.tasks);
