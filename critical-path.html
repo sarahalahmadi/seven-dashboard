@@ -191,9 +191,8 @@
   }
 </style>
 </head>
-<body>
+<body style="--accent:var(--magenta)">
 
-<div class="brand-rule"></div>
 
 <header class="top">
   <div class="brand">
@@ -223,23 +222,46 @@
 
   <div id="empty-state">
     <div class="starter">
-      <div class="starter-main">
-        <span class="eyebrow">Start here</span>
-        <h2 class="display">Drop in your Critical Path file</h2>
-        <p>The project's Excel tracker. It reads the &ldquo;Critical Path&rdquo; tab and fills the whole page from it.</p>
-        <button class="btn primary" id="empty-upload-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M7.5 8.5L12 4l4.5 4.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Upload Excel file</button>
-        <div class="starter-drag-note">Or drag the file anywhere on this page.</div>
-      </div>
-      <div class="starter-side" style="--accent:var(--magenta)">
-        <span class="eyebrow">What you get</span>
-        <ul>
-          <li>Progress by department, with the ones at risk flagged</li>
-          <li>A timeline running through to opening day</li>
-          <li>Started, delayed and overdue counts</li>
-          <li>Readiness by owning team</li>
-          <li>A live countdown to opening</li>
-        </ul>
-      </div>
+    <div class="starter-main">
+      <span class="eyebrow">Start here</span>
+      <h2 class="display">Drop in your Critical Path file</h2>
+      <p>The project tracker, straight from Excel.</p>
+      <button class="btn primary" id="empty-upload-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M7.5 8.5L12 4l4.5 4.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Upload Excel file</button>
+      <div class="starter-drag-note">Or drag it anywhere on this page.</div>
+    </div>
+    <div class="starter-art">
+      <svg viewBox="0 0 220 150" role="img" aria-label="Department lanes running to opening day">
+        <rect x="6" y="6" width="208" height="138" rx="9" fill="var(--surface)" stroke="var(--line)"/>
+        <g class="art-rows">
+          <g class="art-row"><rect x="18" y="35" width="24" height="8" rx="3" fill="var(--line)"/>
+            <rect x="50" y="32" width="146" height="14" rx="4" fill="var(--surface-sunk)"/></g>
+          <g class="art-row"><rect x="18" y="61" width="24" height="8" rx="3" fill="var(--line)"/>
+            <rect x="50" y="58" width="146" height="14" rx="4" fill="var(--surface-sunk)"/></g>
+          <g class="art-row"><rect x="18" y="87" width="24" height="8" rx="3" fill="var(--line)"/>
+            <rect x="50" y="84" width="146" height="14" rx="4" fill="var(--surface-sunk)"/></g>
+          <g class="art-row"><rect x="18" y="113" width="24" height="8" rx="3" fill="var(--line)"/>
+            <rect x="50" y="110" width="146" height="14" rx="4" fill="var(--surface-sunk)"/></g>
+        </g>
+        <g class="art-lanes">
+          <rect class="art-lane" x="50" y="32"  width="98"  height="14" rx="4" fill="var(--cyan)"/>
+          <rect class="art-lane" x="50" y="58"  width="132" height="14" rx="4" fill="var(--green)"/>
+          <rect class="art-lane" x="50" y="84"  width="64"  height="14" rx="4" fill="var(--amber)"/>
+          <rect class="art-lane" x="50" y="110" width="112" height="14" rx="4" fill="var(--navy)"/>
+        </g>
+        <g class="art-marker">
+          <line x1="182" y1="22" x2="182" y2="134" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/>
+          <path d="M182 22 L196 27 L182 32 Z" fill="var(--accent)"/>
+          <circle class="art-pulse" cx="182" cy="134" r="3.5" fill="var(--accent)"/>
+        </g>
+      </svg>
+    </div>
+    <div class="starter-tags">
+      <span class="tag"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="9" width="19" height="6" rx="3"/><path d="M6 12h6" stroke-width="3.2"/></svg><span>Progress</span></span>
+      <span class="tag"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h18"/><path d="M7 9.2v5.6"/><path d="M13 9.2v5.6"/><path d="M19 9.2v5.6"/></svg><span>Timeline</span></span>
+      <span class="tag"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.4V12l3.2 2"/></svg><span>Delays</span></span>
+      <span class="tag"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9.2" cy="9" r="3.3"/><path d="M3.4 19.2c0-3.1 2.6-5.2 5.8-5.2s5.8 2.1 5.8 5.2"/><path d="M16.4 7.3a3 3 0 0 1 0 5.4"/><path d="M18 14.4c1.9.7 3 2.4 3 4.4"/></svg><span>Owners</span></span>
+      <span class="tag"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.8 3h10.4"/><path d="M6.8 21h10.4"/><path d="M8.3 3v3.1c0 2 3.7 3.5 3.7 5.9s-3.7 3.9-3.7 5.9V21"/><path d="M15.7 3v3.1c0 2-3.7 3.5-3.7 5.9s3.7 3.9 3.7 5.9V21"/></svg><span>Countdown</span></span>
+    </div>
     </div>
   </div>
 

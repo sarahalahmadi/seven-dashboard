@@ -94,22 +94,39 @@ button, input, select{ font:inherit; color:inherit; }
   letter-spacing:0.18em; text-transform:uppercase; color:var(--ink-3);
 }
 
-/* the logo's colour sequence, as a 3px rule. Ties every page to the mark. */
+/* The brand bar. Hard colour stops read like a flag, so the logo's hues are
+   blended instead, wiped in on load and left drifting very slowly. */
 .brand-rule{
-  height:3px; width:100%; flex:none;
+  height:4px; width:100%; flex:none; transform-origin:left center;
   background:linear-gradient(90deg,
-    var(--magenta) 0 16%, var(--coral) 16% 32%, var(--amber) 32% 48%,
-    var(--green) 48% 64%, var(--cyan) 64% 82%, var(--navy) 82% 100%);
+    var(--magenta), var(--coral), var(--amber), var(--green),
+    var(--cyan), var(--navy), var(--cyan), var(--amber), var(--magenta));
+  background-size:220% 100%;
+  animation:rule-wipe .8s cubic-bezier(.22,.9,.25,1) both,
+            rule-drift 26s linear infinite;
 }
+@keyframes rule-wipe{ from{ transform:scaleX(0); } to{ transform:scaleX(1); } }
+@keyframes rule-drift{ from{ background-position:0 0; } to{ background-position:-220% 0; } }
 
 /* ---------- header -------------------------------------------------- */
 header.top{
   display:flex; align-items:center; justify-content:space-between;
-  gap:20px; flex-wrap:wrap;
-  padding:16px 32px;
-  background:var(--paper);
-  border-bottom:1px solid var(--line);
+  gap:20px; flex-wrap:wrap; position:relative;
+  padding:18px 32px 20px;
+  background:rgba(247,245,240,0.92);
+  backdrop-filter:saturate(1.4) blur(8px);
   position:sticky; top:0; z-index:50;
+}
+/* the header sits on the logo's colours rather than a plain hairline */
+header.top::after{
+  content:''; position:absolute; left:0; right:0; bottom:0; height:3px;
+  transform-origin:left center;
+  background:linear-gradient(90deg,
+    var(--magenta), var(--coral), var(--amber), var(--green),
+    var(--cyan), var(--navy), var(--cyan), var(--amber), var(--magenta));
+  background-size:220% 100%;
+  animation:rule-wipe .8s cubic-bezier(.22,.9,.25,1) both,
+            rule-drift 26s linear infinite;
 }
 .brand{ display:flex; align-items:center; gap:12px; min-width:0; }
 .brand img{ height:32px; width:auto; object-fit:contain; display:block; }
@@ -150,59 +167,103 @@ input:focus-visible, select:focus-visible{
 main{ max-width:1400px; margin:0 auto; padding:28px 32px 72px; }
 
 /* ---------- empty state ------------------------------------------------
-   Not a dashed box with a graphic in it. A real panel that says what the
-   page will do once a file is in, so the screen earns its space.        */
-#empty-state{ padding:36px 0 0; }
+   The screen every dashboard opens on, so it has to earn its place: what
+   the page builds, shown rather than described, and a row of keywords
+   instead of a paragraph of bullets.                                     */
+#empty-state{ padding:clamp(36px, 7vh, 84px) 0 0; }
 
 .starter{
-  max-width:940px; margin:0 auto;
+  max-width:960px; margin:0 auto;
   background:var(--surface); border:1px solid var(--line);
-  border-radius:var(--radius); box-shadow:var(--shadow);
-  display:grid; grid-template-columns:1.3fr 1fr; gap:0;
-  overflow:hidden;
-  transition:border-color .15s ease, box-shadow .15s ease;
+  border-radius:10px; overflow:hidden;
+  box-shadow:0 1px 2px rgba(20,27,36,.05), 0 12px 32px -18px rgba(20,27,36,.28);
+  display:grid; grid-template-columns:1.15fr 1fr;
+  grid-template-areas:"main art" "tags tags";
+  transition:border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+  animation:card-in .6s cubic-bezier(.22,.9,.25,1) both;
 }
 .starter.drag, #empty-state.drag .starter{
-  border-color:var(--cyan);
-  box-shadow:0 0 0 3px var(--cyan-soft);
+  border-color:var(--accent);
+  box-shadow:0 18px 40px -20px rgba(20,27,36,.35);
+  box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent),
+             0 18px 40px -20px rgba(20,27,36,.35);
+  transform:translateY(-2px);
 }
 
-.starter-main{ padding:38px 40px; }
-.starter-main .eyebrow{ display:block; margin-bottom:14px; }
+.starter-main{ grid-area:main; padding:38px 38px 34px; }
+.starter-main > *{ animation:rise-in .55s cubic-bezier(.22,.9,.25,1) both; }
+.starter-main > *:nth-child(1){ animation-delay:.06s; }
+.starter-main > *:nth-child(2){ animation-delay:.12s; }
+.starter-main > *:nth-child(3){ animation-delay:.18s; }
+.starter-main > *:nth-child(4){ animation-delay:.24s; }
+.starter-main > *:nth-child(5){ animation-delay:.30s; }
+
+.starter-main .eyebrow{
+  display:inline-flex; align-items:center; gap:7px; margin-bottom:14px;
+}
+.starter-main .eyebrow::before{
+  content:''; width:6px; height:6px; border-radius:50%;
+  background:var(--accent); flex:none;
+  animation:pulse-dot 2.4s ease-in-out infinite;
+}
 .starter-main h2{
-  font-size:23px; font-weight:600; letter-spacing:-0.025em;
-  line-height:1.2; margin-bottom:10px;
+  font-size:25px; font-weight:600; letter-spacing:-0.03em;
+  line-height:1.15; margin-bottom:10px;
 }
 .starter-main p{
   color:var(--ink-2); font-size:13.5px; line-height:1.6;
-  max-width:42ch; margin-bottom:24px;
+  max-width:38ch; margin-bottom:26px;
 }
-.starter-main .btn{ padding:10px 18px; font-size:13px; }
-.starter-drag-note{
-  margin-top:16px; font-size:12px; color:var(--ink-3);
-}
+.starter-main .btn{ padding:11px 20px; font-size:13px; }
+.starter-main .btn.primary:hover{ transform:translateY(-1px); box-shadow:0 6px 16px -6px rgba(18,64,111,.6); }
+.starter-drag-note{ margin-top:14px; font-size:12px; color:var(--ink-3); }
 
-/* what you get out of it, so the panel is informative rather than blank */
-.starter-side{
-  padding:38px 36px;
+/* the picture of what the page is about to build */
+.starter-art{
+  grid-area:art; position:relative;
+  display:flex; align-items:center; justify-content:center;
+  padding:28px 30px;
   background:var(--surface-sunk);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 6%, var(--surface-sunk)), var(--surface-sunk));
   border-left:1px solid var(--line);
 }
-.starter-side .eyebrow{ display:block; margin-bottom:14px; }
-.starter-side ul{ list-style:none; display:flex; flex-direction:column; gap:10px; }
-.starter-side li{
-  font-size:12.5px; color:var(--ink-2); line-height:1.45;
-  padding-left:16px; position:relative;
+.starter-art svg{ width:100%; max-width:250px; height:auto; display:block; }
+
+/* What the page gives you, as icon-led keywords. Outlined pills read as a
+   generic tag cloud, so the icon carries the rhythm and the border goes. */
+.starter-tags{
+  grid-area:tags; display:flex; flex-wrap:wrap; gap:9px 26px;
+  padding:15px 38px 17px; border-top:1px solid var(--line);
+  background:var(--surface);
+  animation:rise-in .55s cubic-bezier(.22,.9,.25,1) .34s both;
 }
-.starter-side li::before{
-  content:''; position:absolute; left:0; top:7px;
-  width:6px; height:6px; border-radius:2px; background:var(--accent, var(--cyan));
+.starter-tags .tag{
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:var(--mono); font-size:10px; font-weight:500;
+  letter-spacing:.13em; text-transform:uppercase; color:var(--ink-2);
+  transition:color .15s ease;
+}
+.starter-tags .tag svg{
+  flex:none; color:var(--accent);
+  transition:transform .18s cubic-bezier(.3,1.3,.5,1);
+}
+.starter-tags .tag:hover{ color:var(--ink); }
+.starter-tags .tag:hover svg{ transform:translateY(-2px) scale(1.08); }
+
+@keyframes card-in{ from{ opacity:0; transform:translateY(14px); } to{ opacity:1; transform:none; } }
+@keyframes rise-in{ from{ opacity:0; transform:translateY(9px); } to{ opacity:1; transform:none; } }
+@keyframes pulse-dot{
+  0%,100%{ transform:scale(1); opacity:1; }
+  50%{ transform:scale(1.35); opacity:.55; }
 }
 
-@media (max-width:760px){
-  .starter{ grid-template-columns:1fr; }
-  .starter-main{ padding:30px 24px 26px; }
-  .starter-side{ padding:26px 24px 30px; border-left:none; border-top:1px solid var(--line); }
+@media (max-width:780px){
+  .starter{ grid-template-columns:1fr; grid-template-areas:"art" "main" "tags"; }
+  .starter-main{ padding:28px 24px 26px; }
+  .starter-art{ border-left:none; border-bottom:1px solid var(--line); padding:24px; }
+  .starter-art svg{ max-width:210px; }
+  .starter-tags{ padding:14px 24px 18px; }
 }
 
 /* ---------- board chrome --------------------------------------------- */
@@ -334,4 +395,86 @@ footer.site-footer{
 @media (max-width:640px){
   header.top{ padding:14px 18px; }
   main{ padding:20px 18px 56px; }
+}
+
+/* ---------- the "your board, being built" illustration --------------- */
+.art-bar, .art-kpi, .art-spark, .art-dot{ transform-box:fill-box; }
+.art-bar{
+  transform-origin:bottom;
+  animation:bar-in .7s cubic-bezier(.2,.9,.25,1) both,
+            bar-breathe 7s ease-in-out infinite;
+}
+.art-bars .art-bar:nth-of-type(1){ animation-delay:.45s, 1.2s; }
+.art-bars .art-bar:nth-of-type(2){ animation-delay:.55s, 1.9s; }
+.art-bars .art-bar:nth-of-type(3){ animation-delay:.65s, 2.6s; }
+.art-bars .art-bar:nth-of-type(4){ animation-delay:.75s, 3.3s; }
+.art-bars .art-bar:nth-of-type(5){ animation-delay:.85s, 4.0s; }
+@keyframes bar-in{ from{ transform:scaleY(0); } to{ transform:scaleY(1); } }
+@keyframes bar-breathe{ 0%,100%{ transform:scaleY(1); } 50%{ transform:scaleY(.9); } }
+
+.art-kpi{ animation:kpi-in .5s ease-out both; }
+.art-kpi:nth-of-type(1){ animation-delay:.12s; }
+.art-kpi:nth-of-type(2){ animation-delay:.2s; }
+.art-kpi:nth-of-type(3){ animation-delay:.28s; }
+@keyframes kpi-in{ from{ opacity:0; transform:translateY(-5px); } to{ opacity:1; transform:none; } }
+
+.art-spark{
+  stroke-dasharray:230; stroke-dashoffset:230;
+  animation:spark-draw 1.6s cubic-bezier(.4,.6,.3,1) 1s both;
+}
+@keyframes spark-draw{ to{ stroke-dashoffset:0; } }
+.art-dot{ animation:dot-in .4s ease-out 2.5s both, dot-float 7s ease-in-out 2.9s infinite; }
+@keyframes dot-in{ from{ opacity:0; transform:scale(0); } to{ opacity:1; transform:scale(1); } }
+@keyframes dot-float{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-4px); } }
+
+/* dropping a file makes the board react */
+.starter.drag .art-bar, #empty-state.drag .art-bar{
+  animation:bar-pop .5s cubic-bezier(.3,1.4,.5,1) both;
+}
+@keyframes bar-pop{ 0%{ transform:scaleY(1); } 45%{ transform:scaleY(1.16); } 100%{ transform:scaleY(1); } }
+
+/* lanes and bars that fill from the left: timeline rows, the compliance bar */
+.art-lane, .art-row, .art-tick, .art-marker, .art-pulse{ transform-box:fill-box; }
+.art-lane{
+  transform-origin:left center;
+  animation:lane-in .85s cubic-bezier(.2,.9,.25,1) both,
+            lane-breathe 7s ease-in-out infinite;
+  animation-delay:.4s, 1.3s;
+}
+.art-lanes .art-lane:nth-of-type(1){ animation-delay:.40s, 1.3s; }
+.art-lanes .art-lane:nth-of-type(2){ animation-delay:.52s, 2.0s; }
+.art-lanes .art-lane:nth-of-type(3){ animation-delay:.64s, 2.7s; }
+.art-lanes .art-lane:nth-of-type(4){ animation-delay:.76s, 3.4s; }
+@keyframes lane-in{ from{ transform:scaleX(0); } to{ transform:scaleX(1); } }
+@keyframes lane-breathe{ 0%,100%{ transform:scaleX(1); } 50%{ transform:scaleX(.955); } }
+
+.art-rows .art-row{ animation:kpi-in .5s ease-out both; }
+.art-rows .art-row:nth-of-type(1){ animation-delay:.10s; }
+.art-rows .art-row:nth-of-type(2){ animation-delay:.18s; }
+.art-rows .art-row:nth-of-type(3){ animation-delay:.26s; }
+.art-rows .art-row:nth-of-type(4){ animation-delay:.34s; }
+
+/* the ticks sign themselves off one after another */
+.art-tick{ stroke-dasharray:20; stroke-dashoffset:20; animation:spark-draw .45s ease-out both; }
+.art-rows .art-row:nth-of-type(1) .art-tick{ animation-delay:.95s; }
+.art-rows .art-row:nth-of-type(2) .art-tick{ animation-delay:1.25s; }
+
+.art-marker{ animation:marker-in .6s cubic-bezier(.2,.9,.25,1) 1.1s both; }
+@keyframes marker-in{ from{ opacity:0; transform:translateY(-7px); } to{ opacity:1; transform:none; } }
+
+.art-pulse{ transform-origin:center; animation:pulse-dot 2.6s ease-in-out 1.7s infinite; }
+
+/* dropping a file makes these react too */
+.starter.drag .art-lane, #empty-state.drag .art-lane{
+  animation:lane-pop .5s cubic-bezier(.3,1.4,.5,1) both;
+}
+@keyframes lane-pop{ 0%{ transform:scaleX(1); } 45%{ transform:scaleX(1.05); } 100%{ transform:scaleX(1); } }
+
+/* ---------- respect the system setting ------------------------------- */
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{
+    animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;
+  }
 }
