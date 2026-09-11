@@ -10,6 +10,13 @@
    separation + contrast on white. Assign in order; never shuffle. */
 const PALETTE = ["#0092AC", "#D6004E", "#C98A00", "#00874A", "#1E5A99", "#E4572E", "#7A4DA0", "#0E6E7F", "#A03C6B", "#6E7B12"];
 const colorFor = (i) => PALETTE[i % PALETTE.length];
+/* data-tip drives the hover card in tooltip.js. "|" splits the headline
+   from the lines under it. */
+const tip = function (head) {
+  const lines = Array.prototype.slice.call(arguments, 1).filter(Boolean);
+  return ' data-tip="' + esc([head].concat(lines).join("|")) + '"';
+};
+const shareOf = (v, total) => (total ? Math.round((v / total) * 100) + "% of total" : "");
 /* Single-series magnitude charts (vertical bars, horizontal bars, progress
    rows) use ONE hue. Colour there would encode rank, not identity. The
    categorical palette is reserved for charts where each mark is a category. */
@@ -628,6 +635,7 @@ function drawBar(chart, W, H) {
   const iw = W - P.l - P.r, ih = H - P.t - P.b;
   const step = iw / data.length;
   const bw = Math.min(step * 0.62, 56);
+  const grandTotal = data.reduce(function (a, b) { return a + b.value; }, 0);
 
   const grid = axisTicks(max).map(function (t) {
     const y = P.t + ih - (t / max) * ih;
@@ -639,8 +647,9 @@ function drawBar(chart, W, H) {
     const h = max ? (d.value / max) * ih : 0;
     const x = P.l + step * i + (step - bw) / 2;
     const y = P.t + ih - h;
-    return '<g' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + '><title>' + esc(d.label || d.key) + ': ' + fmtFull(d.value) + '</title>' +
-      '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + Math.max(h, 1) + '" rx="4" fill="' + SERIES_HUE + '"/>' +
+    return '<g class="mark" ' + clickAttrs(chart, d.key) + dimIf(chart, d.key) +
+      tip(d.label || d.key, measureLabel(chart) + ': ' + fmtFull(d.value), shareOf(d.value, grandTotal)) + '>' +
+      '<rect class="mark-grow" x="' + x + '" y="' + y + '" width="' + bw + '" height="' + Math.max(h, 1) + '" rx="4" fill="' + SERIES_HUE + '" style="animation-delay:' + (i * 22) + 'ms"/>' +
       '<text x="' + (x + bw / 2) + '" y="' + (y - 6) + '" text-anchor="middle" class="val-lbl">' + fmt(d.value) + '</text>' +
       catLabel(x + bw / 2, H - P.b + 18, d.label || d.key, data.length) + '</g>';
   }).join("");
@@ -656,13 +665,15 @@ function drawHBar(chart, W, H) {
   const iw = W - P.l - P.r, ih = H - P.t - P.b;
   const step = ih / data.length;
   const bh = Math.min(step * 0.66, 26);
+  const grandTotal = data.reduce(function (a, b) { return a + b.value; }, 0);
 
   const bars = data.map(function (d, i) {
     const w = (d.value / max) * iw;
     const y = P.t + step * i + (step - bh) / 2;
-    return '<g' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + '><title>' + esc(d.label || d.key) + ': ' + fmtFull(d.value) + '</title>' +
+    return '<g class="mark" ' + clickAttrs(chart, d.key) + dimIf(chart, d.key) +
+      tip(d.label || d.key, measureLabel(chart) + ': ' + fmtFull(d.value), shareOf(d.value, grandTotal)) + '>' +
       '<text x="' + (P.l - 10) + '" y="' + (y + bh / 2 + 4) + '" text-anchor="end" class="cat-lbl">' + esc(clip(d.label || d.key, 18)) + '</text>' +
-      '<rect x="' + P.l + '" y="' + y + '" width="' + Math.max(w, 1) + '" height="' + bh + '" rx="4" fill="' + SERIES_HUE + '"/>' +
+      '<rect class="mark-wide" x="' + P.l + '" y="' + y + '" width="' + Math.max(w, 1) + '" height="' + bh + '" rx="4" fill="' + SERIES_HUE + '" style="animation-delay:' + (i * 22) + 'ms"/>' +
       '<text x="' + (P.l + w + 8) + '" y="' + (y + bh / 2 + 4) + '" class="val-lbl">' + fmt(d.value) + '</text></g>';
   }).join("");
   return svgWrap(W, H, bars);
@@ -686,7 +697,7 @@ function drawLineArea(chart, W, H, filled) {
   const pts = data.map((d, i) => xAt(i) + "," + yAt(d.value)).join(" ");
   const area = filled ? '<polygon points="' + P.l + ',' + (P.t + ih) + ' ' + pts + ' ' + xAt(data.length - 1) + ',' + (P.t + ih) + '" fill="' + PALETTE[0] + '" opacity="0.18"/>' : "";
   const line = '<polyline points="' + pts + '" fill="none" stroke="' + PALETTE[0] + '" stroke-width="2.5" stroke-linejoin="round"/>';
-  const dots = data.map((d, i) => '<circle cx="' + xAt(i) + '" cy="' + yAt(d.value) + '" r="3.5" fill="' + PALETTE[0] + '"><title>' + esc(d.key) + ': ' + fmtFull(d.value) + '</title></circle>').join("");
+  const dots = data.map((d, i) => '<circle class="mark" cx="' + xAt(i) + '" cy="' + yAt(d.value) + '" r="4.5" fill="' + PALETTE[0] + '"' + tip(d.label || d.key, measureLabel(chart) + ': ' + fmtFull(d.value)) + '></circle>').join("");
 
   const every = Math.ceil(data.length / 8);
   const xl = data.map((d, i) => i % every === 0
@@ -716,7 +727,7 @@ function drawPieDonut(chart, W, H, isDonut) {
     const a0 = (acc / total) * 360; acc += d.value;
     const a1 = (acc / total) * 360;
     return '<path' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + ' d="' + arcPath(cx, cy, rO, rI, a0, Math.max(a1, a0 + 0.01)) + '" fill="' + colorFor(i) +
-      '" stroke="var(--bg-panel)" stroke-width="1.5"><title>' + esc(d.key) + ': ' + fmtFull(d.value) + ' (' + Math.round(d.value / total * 100) + '%)</title></path>';
+      '" stroke="var(--bg-panel)" stroke-width="1.5" class="mark mark-fade" style="animation-delay:' + (i * 40) + 'ms"' + tip(d.label || d.key, fmtFull(d.value), Math.round(d.value / total * 100) + '% of total') + '></path>';
   }).join("");
   const center = isDonut
     ? '<text x="' + cx + '" y="' + (cy - 2) + '" text-anchor="middle" class="donut-num">' + fmt(total) + '</text>' +
@@ -753,7 +764,7 @@ function drawStacked(chart, W, H) {
       const h = max ? (v / max) * ih : 0;
       yCur -= h;
       return h > 0.5 ? '<rect x="' + x + '" y="' + yCur + '" width="' + bw + '" height="' + h + '" fill="' + colorFor(si) +
-        '"><title>' + esc(r.key) + ' · ' + esc(res.seriesNames[si]) + ': ' + fmtFull(v) + '</title></rect>' : "";
+        '" class="mark mark-grow" style="animation-delay:' + (i * 22) + 'ms"' + tip(r.key, res.seriesNames[si] + ': ' + fmtFull(v)) + '></rect>' : "";
     }).join("");
     return segs + '<text x="' + (x + bw / 2) + '" y="' + (H - P.b + 18) + '" text-anchor="middle" class="cat-lbl">' + esc(clip(r.key, 11)) + '</text>';
   }).join("");
@@ -818,7 +829,7 @@ function drawGauge(chart, W, H) {
   const fill = arcPath(cx, cy, R, R * 0.72, 270, 270 + pct * 180);
   return svgWrap(W, H,
     '<path d="' + track + '" fill="var(--bg-raised)"/>' +
-    (pct > 0 ? '<path d="' + fill + '" fill="' + color + '"><title>' + fmtFull(value) + ' of ' + fmtFull(target) + '</title></path>' : "") +
+    (pct > 0 ? '<path class="mark" d="' + fill + '" fill="' + color + '"' + tip(fmtFull(value) + ' of ' + fmtFull(target)) + '></path>' : "") +
     '<text x="' + cx + '" y="' + (cy - 8) + '" text-anchor="middle" class="donut-num">' + Math.round(pct * 100) + '%</text>' +
     '<text x="' + cx + '" y="' + (cy + 12) + '" text-anchor="middle" class="donut-cap">' + esc(fmt(value) + " OF " + fmt(target)) + '</text>' +
     '<text x="' + (cx - R) + '" y="' + (cy + 26) + '" text-anchor="middle" class="axis-lbl">0</text>' +
@@ -853,7 +864,8 @@ function drawTreemap(chart, W, H) {
   const cells = rects.map(function (rc, i) {
     const pct = Math.round(rc.d.value / total * 100);
     const big = rc.w > 70 && rc.h > 34;
-    return '<g' + clickAttrs(chart, rc.d.key) + dimIf(chart, rc.d.key) + '><title>' + esc(rc.d.key) + ': ' + fmtFull(rc.d.value) + ' (' + pct + '%)</title>' +
+    return '<g class="mark mark-fade" style="animation-delay:' + (i * 28) + 'ms" ' + clickAttrs(chart, rc.d.key) + dimIf(chart, rc.d.key) +
+      tip(rc.d.key, fmtFull(rc.d.value), pct + '% of total') + '>' +
       '<rect x="' + rc.x + '" y="' + rc.y + '" width="' + Math.max(rc.w - 3, 1) + '" height="' + Math.max(rc.h - 3, 1) + '" rx="5" fill="' + colorFor(i) + '"/>' +
       (big ? '<text x="' + (rc.x + 9) + '" y="' + (rc.y + 18) + '" class="tm-lbl">' + esc(clip(rc.d.key, Math.max(6, Math.floor(rc.w / 7)))) + '</text>' +
              '<text x="' + (rc.x + 9) + '" y="' + (rc.y + 34) + '" class="tm-val">' + fmt(rc.d.value) + ' · ' + pct + '%</text>' : "") +
@@ -872,7 +884,8 @@ function drawFunnel(chart, W, H) {
   const bands = data.map(function (d, i) {
     const w = Math.max((d.value / max) * (W * 0.8), 40);
     const y = P.t + rowH * i;
-    return '<g' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + '><title>' + esc(d.label || d.key) + ': ' + fmtFull(d.value) + '</title>' +
+    return '<g class="mark mark-fade" style="animation-delay:' + (i * 30) + 'ms" ' + clickAttrs(chart, d.key) + dimIf(chart, d.key) +
+      tip(d.label || d.key, measureLabel(chart) + ': ' + fmtFull(d.value)) + '>' +
       '<rect x="' + (cx - w / 2) + '" y="' + (y + 3) + '" width="' + w + '" height="' + Math.max(rowH - 6, 4) + '" rx="4" fill="' + colorFor(i) + '"/>' +
       '<text x="' + cx + '" y="' + (y + rowH / 2 + 4) + '" text-anchor="middle" class="fn-lbl">' + esc(clip(d.key, 22)) + ' · ' + fmt(d.value) + '</text></g>';
   }).join("");
@@ -906,7 +919,7 @@ function drawWaterfall(chart, W, H) {
     const connector = (!s.isTotal && i < steps.length - 1)
       ? '<line x1="' + (x + bw) + '" y1="' + y1 + '" x2="' + (x + step) + '" y2="' + y1 + '" class="grid" stroke-dasharray="3 3"/>' : "";
     const attrs = s.isTotal ? "" : clickAttrs(chart, s.key) + dimIf(chart, s.key);
-    return '<g' + attrs + '><title>' + esc(s.key) + ': ' + fmtFull(s.value) + '</title>' +
+    return '<g class="mark" ' + attrs + tip(s.key, fmtFull(s.value)) + '>' +
       '<rect x="' + x + '" y="' + Math.min(y0, y1) + '" width="' + bw + '" height="' + Math.max(Math.abs(y0 - y1), 1) + '" rx="3" fill="' + fill + '"/>' +
       '<text x="' + (x + bw / 2) + '" y="' + (Math.min(y0, y1) - 6) + '" text-anchor="middle" class="val-lbl">' + fmt(s.value) + '</text>' +
       catLabel(x + bw / 2, H - P.b + 18, s.key, steps.length) + '</g>' + connector;
@@ -939,8 +952,9 @@ function drawCombo(chart, W, H) {
     const h = max ? (d.value / max) * ih : 0;
     const x = P.l + step * i + (step - bw) / 2;
     const y = P.t + ih - h;
-    return '<g' + clickAttrs(chart, d.key) + dimIf(chart, d.key) + '><title>' + esc(d.key) + ': ' + fmtFull(d.value) + ' · ' + (countMap[d.key] || 0) + ' rows</title>' +
-      '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + Math.max(h, 1) + '" rx="4" fill="' + SERIES_HUE + '"/>' +
+    return '<g class="mark" ' + clickAttrs(chart, d.key) + dimIf(chart, d.key) +
+      tip(d.label || d.key, measureLabel(chart) + ': ' + fmtFull(d.value), (countMap[d.key] || 0) + ' rows') + '>' +
+      '<rect class="mark-grow" x="' + x + '" y="' + y + '" width="' + bw + '" height="' + Math.max(h, 1) + '" rx="4" fill="' + SERIES_HUE + '" style="animation-delay:' + (i * 22) + 'ms"/>' +
       catLabel(x + bw / 2, H - P.b + 18, d.label || d.key, data.length) + '</g>';
   }).join("");
   const pts = data.map(function (d, i) {
@@ -952,7 +966,7 @@ function drawCombo(chart, W, H) {
     data.map(function (d, i) {
       const cx = P.l + step * i + step / 2;
       const cy = P.t + ih - (cmax ? ((countMap[d.key] || 0) / cmax) * ih : 0);
-      return '<circle cx="' + cx + '" cy="' + cy + '" r="3.5" fill="var(--orange)"><title>' + esc(d.key) + ': ' + (countMap[d.key] || 0) + ' rows</title></circle>';
+      return '<circle class="mark" cx="' + cx + '" cy="' + cy + '" r="4.5" fill="var(--orange)"' + tip(d.label || d.key, (countMap[d.key] || 0) + ' rows') + '></circle>';
     }).join("");
   return svgWrap(W, H, grid + rightAxis + bars + line);
 }

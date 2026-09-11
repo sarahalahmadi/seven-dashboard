@@ -7,9 +7,49 @@
 const DEPT_ORDER = ["Discovery", "Hot Wheels", "FEC", "Bowling", "Play-Doh Attraction", "Cinema", "Complex"];
 const DEPT_COLORS = ["#0092AC", "#D6004E", "#C98A00", "#00874A", "#1E5A99", "#E4572E", "#7A4DA0"];
 
+/* Set this to false and the board goes back to being a plain, static
+   dashboard: nothing becomes clickable and no filter pill can appear.
+   The layout is identical either way. */
+const ENABLE_FILTERING = true;
+
 const state = {
   rows: [],
   openingDate: null,
+  filter: null,        // { department } or { owner }
+};
+
+/* The rows the numbers are read from. With nothing selected this is simply
+   every row, so the board is exactly what it was before. */
+function activeRows() {
+  if (!ENABLE_FILTERING || !state.filter) return state.rows;
+  if (state.filter.department) return state.rows.filter((r) => r.department === state.filter.department);
+  if (state.filter.owner) return state.rows.filter((r) => r.owner === state.filter.owner);
+  return state.rows;
+}
+
+function setFilter(next) {
+  if (!ENABLE_FILTERING) return;
+  const same = state.filter && next &&
+    state.filter.department === next.department && state.filter.owner === next.owner;
+  state.filter = same ? null : next;   // clicking the same thing again clears it
+  renderAll();
+}
+
+const pickAttrs = (kind, value) =>
+  ENABLE_FILTERING ? ' class="pick" data-pick="' + kind + '" data-val="' + esc(value) + '"' : '';
+
+const dimFor = (kind, value) =>
+  (ENABLE_FILTERING && state.filter && state.filter[kind] && state.filter[kind] !== value) ? " dim" : "";
+
+function esc(v) {
+  return String(v === null || v === undefined ? "" : v)
+    .replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* Tooltip text for tooltip.js: "|" splits the headline from the lines below. */
+const tip = function (head) {
+  const lines = Array.prototype.slice.call(arguments, 1).filter(Boolean);
+  return ' data-tip="' + esc([head].concat(lines).join("|")) + '"';
 };
 
 // ---------- Column header aliases (tolerant matching) ----------
@@ -272,7 +312,7 @@ function renderTrack(deptList, totals, openingDate) {
     const startedLen = (startedTotal / 100) * C;
     const inProgressLen = Math.max(startedLen - completeLen, 0);
 
-    return `<div class="track-node ${cls}" style="--node-color:${d.color};">
+    return `<div class="track-node ${cls}${dimFor("department", d.name)}"${pickAttrs("department", d.name)} style="--node-color:${d.color};"${tip(d.name, `${completePct}% complete of ${fmt(d.items)} items`, `${inProgressPct}% in progress`, risk ? "At risk: delayed or overdue work" : "")}>
       <div class="ring">
         <svg viewBox="0 0 44 44" width="44" height="44">
           <circle cx="22" cy="22" r="${R}" fill="none" stroke="var(--border)" stroke-width="4"/>
@@ -304,7 +344,7 @@ function renderKPIs(totals) {
     { label: "Completion Overdue",  value: totals.completionOverdue, accent: "var(--coral)",   icon: ic('<rect x="3.5" y="5" width="17" height="15" rx="1.5"/><path d="M3.5 10h17"/><path d="M8 3v3"/><path d="M16 3v3"/><path d="M10 14l4 3.5"/><path d="M14 14l-4 3.5"/>') },
   ];
   document.getElementById("kpi-grid").innerHTML = cards.map((c) => `
-    <div class="kpi-card" style="--accent:${c.accent}">
+    <div class="kpi-card" style="--accent:${c.accent}"${tip(c.label, fmt(c.value) + " items")}>
       <div class="icon">${c.icon}</div>
       <div class="label">${c.label}</div>
       <div class="value mono">${fmt(c.value)}</div>
@@ -321,10 +361,10 @@ function renderBarChart(deptList) {
     const progressH = (progressPct / 100) * H;
     const remain = H - completeH - progressH;
     // Only non-zero segments are drawn, so the 2px gaps never double up.
-    const seg = (h, color) => (h > 0.5 ? `<div class="bar-seg" style="height:${h}px; background:${color};"></div>` : "");
-    return `<div class="bar-col">
-      <div class="bar-total mono" title="${fmt(d.complete)} of ${fmt(d.items)} items complete">${completePct}%</div>
-      <div class="bar-stack" style="height:${H}px;" title="Complete ${completePct}% \u00b7 In Progress ${progressPct}% \u00b7 Pending ${remainPct}%">
+    const seg = (h, color) => (h > 0.5 ? `<div class="bar-seg bar-rise" style="height:${h}px; background:${color};"></div>` : "");
+    return `<div class="bar-col${dimFor("department", d.name)}"${pickAttrs("department", d.name)}${tip(d.name, `Complete ${completePct}% (${fmt(d.complete)} items)`, `In progress ${progressPct}%`, `Pending ${remainPct}%`, `${fmt(d.items)} items in total`)}>
+      <div class="bar-total mono">${completePct}%</div>
+      <div class="bar-stack" style="height:${H}px;">
         ${seg(remain, "var(--st-pending)")}
         ${seg(progressH, "var(--st-active-alt)")}
         ${seg(completeH, "var(--st-done)")}
@@ -352,14 +392,14 @@ function renderTimeline(deptList, openingDate) {
 
   const rowsHtml = deptList.map((d) => {
     if (!d.minStart || !d.maxEnd) {
-      return `<div class="tl-row"><div class="tl-name">${d.name}</div><div class="tl-track">${openMark}</div></div>`;
+      return `<div class="tl-row${dimFor("department", d.name)}"${pickAttrs("department", d.name)}><div class="tl-name">${d.name}</div><div class="tl-track">${openMark}</div></div>`;
     }
     const left = ((d.minStart - min) / span) * 100;
     const width = Math.max(((d.maxEnd - d.minStart) / span) * 100, 1.5);
     const range = `${d.minStart.toLocaleDateString(undefined, { month: "short", day: "numeric" })} to ${d.maxEnd.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
-    return `<div class="tl-row">
+    return `<div class="tl-row${dimFor("department", d.name)}"${pickAttrs("department", d.name)}${tip(d.name, range, `${fmt(d.items)} items`)}>
       <div class="tl-name">${d.name}</div>
-      <div class="tl-track" title="${d.name}: ${range}">
+      <div class="tl-track">
         <div class="tl-bar" style="left:${left}%; width:${width}%; background:${d.color};"></div>${openMark}
       </div>
     </div>`;
@@ -385,8 +425,8 @@ function drawDonut(svgId, segments, total) {
   segments.forEach((s) => {
     const frac = total > 0 ? s.value / total : 0;
     const len = frac * circumference;
-    paths += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.color}" stroke-width="14"
-      stroke-dasharray="${len} ${circumference - len}" stroke-dashoffset="${-offset}" stroke-linecap="butt"/>`;
+    paths += `<circle class="mark mark-fade" style="animation-delay:${offset ? 120 : 0}ms" cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.color}" stroke-width="14"
+      stroke-dasharray="${len} ${circumference - len}" stroke-dashoffset="${-offset}" stroke-linecap="butt"${tip(s.label, fmt(s.value), total ? Math.round(frac * 100) + "% of total" : "")}/>`;
     offset += len;
   });
   svg.innerHTML = paths;
@@ -435,12 +475,11 @@ function renderReadinessMatrix(ownerList, readinessMatrix) {
   if (!ownerList.length) { panel.innerHTML = `<div style="font-size:12px;color:var(--ink-dim);">No owner data found.</div>`; return; }
 
   const ownerNames = ownerList.map((o) => o.name);
-  const head = `<tr><th class="rm-corner">Department</th>${ownerNames.map((o) => `<th>${o}</th>`).join("")}<th class="rm-overall">Overall</th></tr>`;
+  const head = `<tr><th class="rm-corner">Department</th>${ownerNames.map((o) => `<th${pickAttrs("owner", o)}${tip(o, "Filter the board to this team")}>${o}</th>`).join("")}<th class="rm-overall">Overall</th></tr>`;
 
   const cellHtml = (c, extraClass) => {
     if (!c.items) return `<td class="rm-cell rm-empty"></td>`;
-    const tip = `${fmt(c.complete)} complete + ${fmt(c.inProgress)} in progress of ${fmt(c.items)} items`;
-    return `<td class="rm-cell ${extraClass || ""}" title="${tip}">
+    return `<td class="rm-cell ${extraClass || ""}"${tip(`${c.pct}% started`, `${fmt(c.complete)} complete`, `${fmt(c.inProgress)} in progress`, `of ${fmt(c.items)} items`)}>
       <span class="rm-pill mono" style="background:${pctColor(c.pct).bg}; color:${pctColor(c.pct).fg};">${c.pct}%</span>
     </td>`;
   };
@@ -448,14 +487,20 @@ function renderReadinessMatrix(ownerList, readinessMatrix) {
   const bodyRows = readinessMatrix.map((row) => {
     const cells = row.cells.map((c) => cellHtml(c)).join("");
     const overall = { items: row.items, complete: row.complete, inProgress: row.inProgress, pct: row.overallPct, completePct: row.overallCompletePct };
-    return `<tr><td class="rm-dept">${row.department}</td>${cells}${cellHtml(overall, "rm-overall")}</tr>`;
+    return `<tr><td class="rm-dept"${pickAttrs("department", row.department)}>${row.department}</td>${cells}${cellHtml(overall, "rm-overall")}</tr>`;
   }).join("");
 
   panel.innerHTML = `<div class="rm-scroll"><table class="rm-table"><thead>${head}</thead><tbody>${bodyRows}</tbody></table></div>`;
 }
 
 function renderAll() {
-  const { totals, deptList, ownerList, readinessMatrix } = aggregate(state.rows);
+  // Two passes: the headline numbers read the filtered rows, while the
+  // department cards, bars and timeline keep showing every department so
+  // you can always see what else there is and switch to it.
+  const full = aggregate(state.rows);
+  const view = state.filter ? aggregate(activeRows()) : full;
+  const totals = view.totals, ownerList = view.ownerList, readinessMatrix = view.readinessMatrix;
+  const deptList = full.deptList;
   document.getElementById("empty-state").style.display = "none";
   document.getElementById("dashboard").style.display = "block";
   document.getElementById("reset-btn").style.display = "inline-block";
@@ -469,6 +514,51 @@ function renderAll() {
   renderTimeline(deptList, state.openingDate);
   renderDonuts(totals);
   renderReadinessMatrix(ownerList, readinessMatrix);
+  renderFilterPill();
+  wirePicks();
+}
+
+/* The pill only exists while something is selected. Clear it and the page
+   is the board exactly as it was, with nothing added to the template. */
+function renderFilterPill() {
+  let pill = document.getElementById("filter-pill");
+  if (!ENABLE_FILTERING) { if (pill) pill.remove(); return; }
+  if (!pill) {
+    pill = document.createElement("div");
+    pill.id = "filter-pill";
+    document.body.appendChild(pill);
+  }
+  if (!state.filter) { pill.className = ""; pill.innerHTML = ""; return; }
+
+  const what = state.filter.department || state.filter.owner;
+  const kind = state.filter.department ? "Department" : "Team";
+  const sumItems = (rows) => rows.reduce((a, r) => a + (r.items || 0), 0);
+  const shown = sumItems(activeRows()), all = sumItems(state.rows);
+  pill.className = "on";
+  pill.innerHTML =
+    '<span><span class="pill-dim">' + kind + ':</span> <span class="pill-what"></span>' +
+    ' <span class="pill-dim">' + fmt(shown) + ' of ' + fmt(all) + ' items</span></span>' +
+    '<button type="button" id="filter-clear-btn">Clear filter</button>';
+  pill.querySelector(".pill-what").textContent = what;
+  pill.querySelector("#filter-clear-btn").addEventListener("click", function () {
+    state.filter = null;
+    renderAll();
+  });
+}
+
+/* Anything tagged by pickAttrs() filters the board when clicked. */
+function wirePicks() {
+  if (!ENABLE_FILTERING) return;
+  const dash = document.getElementById("dashboard");
+  if (!dash) return;
+  Array.prototype.forEach.call(dash.querySelectorAll("[data-pick]"), function (el) {
+    el.addEventListener("click", function () {
+      const kind = el.getAttribute("data-pick");
+      const next = {};
+      next[kind] = el.getAttribute("data-val");
+      setFilter(next);
+    });
+  });
 }
 
 // ---------------------------------------------------------------
@@ -481,6 +571,7 @@ function handleFile(file) {
       const data = new Uint8Array(e.target.result);
       const workbook = XLSX.read(data, { type: "array", cellDates: false });
       state.rows = parseWorkbook(workbook);
+      state.filter = null;
       state.openingDate = findOpeningDate(workbook);
       if (!state.rows.length) {
         alert("Couldn't find any task rows. Make sure the file has a 'Critical Path' tab with a Department column.");
@@ -506,6 +597,8 @@ document.getElementById("reset-btn").addEventListener("click", () => {
   document.getElementById("empty-state").style.display = "block";
   document.getElementById("reset-btn").style.display = "none";
   document.getElementById("upload-btn").style.display = "none";
+  state.filter = null;
+  renderFilterPill();
 });
 
 // Drag & drop on the empty state

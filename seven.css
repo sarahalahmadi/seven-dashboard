@@ -434,9 +434,20 @@ footer.site-footer{
 /* ---------- print ----------------------------------------------------- */
 @media print{
   header.top, .chart-tools, .file-bar .ctrl-group,
-  #add-chart-btn, #reset-btn, #print-btn, .top-actions{ display:none !important; }
+  #add-chart-btn, #reset-btn, #print-btn, .top-actions, .tipcard{ display:none !important; }
   body{ background:#fff; }
   .chart-card, .panel{ break-inside:avoid; box-shadow:none; }
+  /* Animations do not run when printing, and every mark rests in its
+     finished state, so the page prints exactly as it looks. */
+  .mark-grow, .mark-wide, .mark-fade, #filter-pill{ animation:none !important; }
+  .pick.dim{ opacity:1 !important; }
+  /* A filtered board must say so on paper, not quietly show part of the data. */
+  #filter-pill{
+    position:static; transform:none; display:flex !important;
+    background:none; color:#000; box-shadow:none;
+    padding:0 0 10px; border-radius:0; font-size:12px;
+  }
+  #filter-pill button{ display:none !important; }
 }
 
 @media (max-width:640px){
@@ -516,6 +527,77 @@ footer.site-footer{
   animation:lane-pop .5s cubic-bezier(.3,1.4,.5,1) both;
 }
 @keyframes lane-pop{ 0%{ transform:scaleX(1); } 45%{ transform:scaleX(1.05); } 100%{ transform:scaleX(1); } }
+
+/* ---------- hover tooltip -------------------------------------------- */
+.tipcard{
+  position:fixed; top:0; left:0; z-index:300; pointer-events:none;
+  max-width:280px; padding:9px 12px;
+  background:var(--ink); color:#fff; border-radius:6px;
+  box-shadow:0 10px 28px -10px rgba(20,27,36,.55);
+  opacity:0; transition:opacity .12s ease;
+  will-change:transform;
+}
+.tipcard.on{ opacity:1; }
+.tipcard .tip-head{
+  display:block; font-family:var(--sans); font-size:12.5px; font-weight:600;
+  letter-spacing:-0.01em; line-height:1.35;
+}
+.tipcard .tip-line{
+  display:block; font-family:var(--mono); font-size:11px;
+  color:rgba(255,255,255,.72); line-height:1.5; margin-top:2px;
+}
+
+/* ---------- chart marks: hover focus and redraw motion ---------------- */
+/* Hovering one mark pushes the rest back so dense charts stay readable. */
+.chart-svg:hover .mark{ opacity:.42; }
+.chart-svg .mark{ transition:opacity .14s ease; }
+.chart-svg:hover .mark:hover, .chart-svg .mark:hover{ opacity:1; }
+
+/* Marks grow in whenever a chart draws, which includes every time a
+   filter changes, so you can see the board respond. The resting state is
+   the finished state, so with animation off (printing, or reduced
+   motion) everything simply sits where it belongs. */
+.mark-grow{ transform-box:fill-box; transform-origin:bottom; animation:mark-up .34s cubic-bezier(.22,.9,.25,1) both; }
+.mark-wide{ transform-box:fill-box; transform-origin:left center; animation:mark-out .34s cubic-bezier(.22,.9,.25,1) both; }
+.mark-fade{ animation:mark-in .3s ease-out both; }
+@keyframes mark-up{ from{ transform:scaleY(0); } to{ transform:scaleY(1); } }
+@keyframes mark-out{ from{ transform:scaleX(0); } to{ transform:scaleX(1); } }
+@keyframes mark-in{ from{ opacity:0; } to{ opacity:1; } }
+
+/* ---------- active filter ---------------------------------------------
+   A floating chip, not a panel: with nothing filtered the page is exactly
+   the board it was before, untouched.                                    */
+#filter-pill{
+  position:fixed; left:50%; bottom:22px; transform:translateX(-50%);
+  z-index:120; display:none; align-items:center; gap:12px;
+  padding:9px 10px 9px 16px;
+  background:var(--ink); color:#fff; border-radius:999px;
+  box-shadow:0 12px 30px -10px rgba(20,27,36,.5);
+  font-size:12.5px; white-space:nowrap;
+  animation:pill-in .22s cubic-bezier(.22,.9,.25,1) both;
+}
+#filter-pill.on{ display:flex; }
+#filter-pill .pill-what{ font-weight:600; }
+#filter-pill .pill-dim{ color:rgba(255,255,255,.6); }
+#filter-pill button{
+  display:inline-flex; align-items:center; gap:6px; cursor:pointer;
+  background:rgba(255,255,255,.14); border:none; color:#fff;
+  border-radius:999px; padding:5px 12px; font-size:11.5px; font-family:var(--sans);
+}
+#filter-pill button:hover{ background:rgba(255,255,255,.26); }
+@keyframes pill-in{ from{ opacity:0; transform:translate(-50%,10px); } to{ opacity:1; transform:translateX(-50%); } }
+
+/* things you can click to filter */
+.pick{ cursor:pointer; transition:opacity .16s ease, background .14s ease, box-shadow .14s ease; }
+.pick.dim{ opacity:.34; }
+.track-node.pick:hover{ box-shadow:0 0 0 2px var(--cyan-soft); }
+.bar-col.pick:hover .bar-stack{ filter:brightness(1.06); }
+.tl-row.pick:hover .tl-track{ box-shadow:inset 0 0 0 2px var(--cyan-soft); }
+td.rm-dept.pick:hover, th.pick:hover{ background:var(--surface-sunk); }
+.pick:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
+
+/* the Critical Path bars are HTML, not SVG, so they get their own grow-in */
+.bar-rise{ transform-origin:bottom; animation:mark-up .34s cubic-bezier(.22,.9,.25,1) both; }
 
 /* ---------- respect the system setting ------------------------------- */
 @media (prefers-reduced-motion: reduce){
